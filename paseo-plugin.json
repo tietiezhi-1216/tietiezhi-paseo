@@ -1,0 +1,6 @@
+{
+  "id": "tietiezhi",
+  "requirements": {
+    "paseo": ">=0.10.2"
+  }
+}
