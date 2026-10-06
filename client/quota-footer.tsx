@@ -17,7 +17,10 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const [rowWidth, setRowWidth] = useState(240);
   const dense = rowWidth < 230;
   // Explicit panel selection, not a guessed current session/model. No composer contribution.
-  const [family, setFamily] = useState<Family>("codex");
+  const [family, setFamilyState] = useState<Family>(() => {
+    try { return (localStorage.getItem("tietiezhi.family") as Family) || "codex"; } catch { return "codex"; }
+  });
+  const setFamily = (f: Family) => { setFamilyState(f); try { localStorage.setItem("tietiezhi.family", f); } catch {} };
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const quota = useQuota(host.id, family, null);
   const rpc = useRpc(getQuota);
@@ -39,12 +42,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const stale = !online || quota.isError || q?.stale || (refresh.variables === family && refresh.isError);
   const label = quotaFooterLabel(family, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
   const windows = q?.windows ?? [];
-  const meters = family === "antigravity"
-    ? (["gemini", "claude"] as const).flatMap((pool) => {
-      const window = selectQuotaWindow(family, pool, windows);
-      return window ? [{ name: pool === "gemini" ? "G" : "C", window }] : [];
-    })
-    : [{ name: "", window: selectQuotaWindow(family, null, windows) }];
+  const meters = [{ name: "", window: selectQuotaWindow(family, family === "antigravity" ? "gemini" : null, windows) }];
   const time = meters.length > 1
     ? meters.map((meter) => `${meter.name}${compactResetCountdown(meter.window?.resetAt, Date.now()).replace("分", "m").replace("时", "h").replace("天", "d")}`).join("/")
     : meters[0]?.window ? readableResetCountdown(meters[0].window.resetAt, Date.now(), dense) : quota.isFetching ? "读取中…" : "—";

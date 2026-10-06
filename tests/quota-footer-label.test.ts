@@ -54,10 +54,10 @@ test("倒计时不伪造已过期或缺失的重置时间", () => {
   assert.equal(resetCountdown(now + 20 * 60000, now), "20分钟后刷新");
   assert.equal(resetCountdown(now + 2 * 86400000, now), "2天后刷新");
 });
-test("Antigravity 双池一行分别显示，不合并额度或重置时间", () => {
+test("Antigravity 仅显示首个主额度", () => {
   const windows = [
     { id: "g", label: "Gemini", pool: "gemini" as const, usedPercent: 20, resetAt: now + 3600000 },
     { id: "c", label: "Claude", pool: "claude" as const, usedPercent: 65, resetAt: now + 2 * 3600000 },
   ];
-  assert.equal(quotaFooterLabel("antigravity", windows, now), "AG G80%/1h C35%/2h");
+  assert.equal(quotaFooterLabel("antigravity", windows, now), "AG 80% · 1小时后刷新");
 });

@@ -61,16 +61,7 @@ export function accountLevelLabel(plan: string | null | undefined): string {
 export function quotaFooterLabel(family: Family, windows: QuotaWindow[], now: number, stale = false, loading = false, readable = false): string {
   const vendor = { codex: "Codex", xai: "Grok", go: "Go", antigravity: "AG" }[family];
   const remaining = (window: QuotaWindow) => `${Math.round(100 - window.usedPercent)}%`;
-  if (family === "antigravity") {
-    const pools = (["gemini", "claude"] as const).flatMap((pool) => {
-      const window = selectQuotaWindow(family, pool, windows);
-      if (!window) return [];
-      const time = resetCountdown(window.resetAt, now).replace("分钟后刷新", "m").replace("小时后刷新", "h").replace("天后刷新", "d").replace("刷新时间未知", "?");
-      return [`${pool === "gemini" ? "G" : "C"}${remaining(window)}/${time}`];
-    });
-    return pools.length ? `${vendor} ${pools.join(" ")}${stale ? " · 缓存" : ""}` : `${vendor} · ${loading ? "读取中…" : "未获取"}`;
-  }
-  const window = selectQuotaWindow(family, null, windows);
+  const window = selectQuotaWindow(family, family === "antigravity" ? "gemini" : null, windows);
   if (!window) return `${vendor} · ${loading ? "读取中…" : "未获取"}`;
   return `${vendor} ${remaining(window)} · ${stale ? "缓存 · " : ""}${readable ? readableResetCountdown(window.resetAt, now) : resetCountdown(window.resetAt, now)}`;
 }

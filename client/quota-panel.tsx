@@ -110,7 +110,7 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
               );
             }
             const q = quotaFor(account);
-            if (!q || !q.windows.length) {
+            if (!q || !q.windows.length || q.stale || q.error) {
               return (
                 <Text style={{ color: account.active ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 11, fontWeight: account.active ? "600" : "500" }}>
                   {account.active ? "✓ 默认" : "切换"}
@@ -150,7 +150,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
   };
   return (
     <View style={{ marginTop: 2, gap: 4 }}>
-      {account.subscriptionExpiresAt ? (
+      {account.subscriptionExpiresAt && groups.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
           📅 会员到期：{formatDays(account.subscriptionExpiresAt)} · {compactDateTime(account.subscriptionExpiresAt)}
         </Text>
@@ -176,67 +176,64 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 {group.pool === "claude" && account.active ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>当前会话</Text> : null}
                 {group.pool === "gemini" && quota?.stale === false ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>刷新于 {compactDateTime(Date.now()).split(" ")[1]}</Text> : null}
               </View>
-              {group.windows.map((window, index) => (
-                <View
-                  key={window.id}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    minHeight: 22,
-                    paddingTop: index ? 6 : 0,
-                    borderTopWidth: index ? 1 : 0,
-                    borderTopColor: hexAlpha(theme.colors.border, 0.3),
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, gap: 6 }}>
-                    <Text numberOfLines={1} style={{ minWidth: 32, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }}>{window.title}</Text>
-                    {window.resetAt ? (
-                      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 0 }}>
-                        ↻ {timeUntilReset(window.resetAt, Date.now())} ({compactDateTime(window.resetAt)})
-                      </Text>
-                    ) : null}
-                  </View>
-                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+              {quota?.stale || quota?.error ? (
+                <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>
+                    {quota.error ? quotaFailureLabel(quota.error) : "缓存数据"}
+                  </Text>
                 </View>
-              ))}
+              ) : (
+                group.windows.map((window, index) => (
+                  <View
+                    key={window.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      minHeight: 22,
+                      paddingTop: index ? 6 : 0,
+                      borderTopWidth: index ? 1 : 0,
+                      borderTopColor: hexAlpha(theme.colors.border, 0.3),
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, gap: 6 }}>
+                      <Text numberOfLines={1} style={{ minWidth: 32, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }}>{window.title}</Text>
+                      {window.resetAt ? (
+                        <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+                          ↻ {timeUntilReset(window.resetAt, Date.now())} ({compactDateTime(window.resetAt)})
+                        </Text>
+                      ) : null}
+                    </View>
+                    <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+                  </View>
+                ))
+              )}
             </View>
           ))}
         </View>
+      ) : quota?.stale || quota?.error ? (
+        <View style={{ paddingVertical: 6 }}>
+          <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>
+            {quota.error ? quotaFailureLabel(quota.error) : "缓存数据"}
+          </Text>
+        </View>
+      ) : !quota?.windows.length && !pending ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
       ) : (
         quota?.windows.map((window) => (
           <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-              ↻ 额度刷新：{window.resetAt ? timeUntilReset(window.resetAt, Date.now()) : "未知"}
+            <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+              {account.subscriptionExpiresAt ? `📅 ${formatDays(account.subscriptionExpiresAt)}到期  ` : ""}↻ 刷新：{window.resetAt ? timeUntilReset(window.resetAt, Date.now()) : "未知"}
             </Text>
             {window.resetAt ? (
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0 }}>
                 {compactDateTime(window.resetAt)}
               </Text>
             ) : null}
           </View>
         ))
       )}
-      {!quota?.windows.length && !pending ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
-      ) : null}
-      {quota?.stale || quota?.error ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 4 }}>
-          {quota?.stale ? (
-            <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: hexAlpha(theme.colors.statusWarning, 0.1), borderRadius: 4 }}>
-              <Text style={{ color: theme.colors.statusWarning, fontSize: 10, fontWeight: "600" }}>缓存数据</Text>
-            </View>
-          ) : null}
-          {quota?.error ? (
-            <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: hexAlpha(theme.colors.statusWarning, 0.1), borderRadius: 4 }}>
-              <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 10, fontWeight: "600" }}>
-                {quotaFailureLabel(quota.error)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }

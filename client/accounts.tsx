@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRpc, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FAMILY_LABELS, FamilySchema, listAccounts, switchAccount, type Account, type AccountSnapshot, type Family } from "../shared/accounts.ts";
+import { FAMILY_LABELS, FamilySchema, listAccounts, switchAccount, deleteAccount, type Account, type AccountSnapshot, type Family } from "../shared/accounts.ts";
 import { compactTime } from "../shared/ui-format.ts";
 import { Action, Disclosure, IconAction, Loading, Notice, errorText, hexAlpha } from "./ui.tsx";
 
@@ -35,7 +35,20 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
     retry: false,
   });
   const [confirmation, setConfirmation] = useState<{ account: Account; revision: string } | null>(null);
+  const [deleteConf, setDeleteConf] = useState<Account | null>(null);
   const [notice, setNotice] = useState("");
+  const deleteRpc = useRpc(deleteAccount);
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteRpc({ id, revision: accounts.data!.revision }),
+    onSuccess(result) {
+      queries.setQueryData(key, result.snapshot);
+      setNotice("账号已删除");
+      setDeleteConf(null);
+    },
+    onError() {
+      void queries.invalidateQueries({ queryKey: key });
+    },
+  });
   const mutation = useMutation({
     mutationFn: (selection: NonNullable<typeof confirmation>) => change({ id: selection.account.id, revision: selection.revision, confirmed: true }),
     onSuccess(result) {
@@ -131,7 +144,16 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
                       accessibilityLabel={account.active ? `${account.label} · 当前默认` : `切换至 ${account.label}`}
                       accessibilityState={{ selected: account.active }}
                       disabled={!online || account.active || !account.canSwitch || accounts.isError || mutation.isPending}
-                      onPress={() => choose(account)}
+                      onPress={() => { setDeleteConf(null); choose(account); }}
+                      {...({
+                        onContextMenu: (e: any) => {
+                          e.preventDefault?.(); e.stopPropagation?.();
+                          if (!account.active) {
+                            setConfirmation(null);
+                            setDeleteConf(account);
+                          }
+                        }
+                      } as any)}
                       style={{ minHeight: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}
                     >
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
@@ -187,6 +209,16 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
                     ) : null}
 
                     {account.problem ? <Notice theme={theme} error text="授权不完整" /> : null}
+                    
+                    {deleteConf?.id === account.id ? (
+                      <View style={{ marginTop: 4, padding: 8, gap: 5, borderWidth: 1, borderColor: theme.colors.statusDanger, borderRadius: 6, backgroundColor: hexAlpha(theme.colors.statusDanger, 0.1) }}>
+                        <Text style={{ color: theme.colors.statusDanger, fontWeight: "600", fontSize: 12 }}>删除此账号记录？</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 6, marginTop: 2 }}>
+                          <Action theme={theme} title="取消" disabled={deleteMutation.isPending} onPress={() => setDeleteConf(null)} />
+                          <Action theme={theme} title={deleteMutation.isPending ? "删除中…" : "删除"} disabled={!online || deleteMutation.isPending} onPress={() => deleteMutation.mutate(account.id)} />
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}

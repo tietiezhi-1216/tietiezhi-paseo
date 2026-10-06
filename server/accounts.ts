@@ -300,4 +300,28 @@ export class AccountService {
       throw new Error("账号切换未完成，请刷新后重试");
     }
   }
+
+  async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
+    const release = await lockfile.lock(this.paths.archive, {
+      stale: 10_000, update: 1000, retries: { retries: 5, minTimeout: 100, maxTimeout: 500 },
+      onCompromised() {},
+    }).catch(() => { throw new Error("授权文件正忙，请稍后重试"); });
+    let committed = false;
+    try {
+      const registry = await this.registry();
+      if (input.revision !== registry.snapshot.revision) throw new Error("账号数据已变化，请刷新列表");
+      const account = registry.accounts.find((item) => item.id === input.id);
+      if (!account) throw new Error("找不到选定账号，请刷新列表");
+      const active = registry.snapshot.accounts.find((item) => item.id === input.id)?.active;
+      if (active) throw new Error("默认账号不允许删除；请先切换为其他账号");
+      
+      checkAbort(signal);
+      if (registry.archive.content !== null) await this.backup(this.paths.archive, "accounts");
+      const newAccounts = registry.accounts.filter(item => item.id !== input.id);
+      await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: newAccounts });
+      committed = true;
+    } finally { await release?.().catch(() => {}); }
+    await this.pruneBackups().catch(() => {});
+    return { snapshot: await this.list() };
+  }
 }

@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { AccountService } from "./server/accounts.ts";
-import { listAccounts, switchAccount } from "./shared/accounts.ts";
+import { listAccounts, switchAccount, deleteAccount } from "./shared/accounts.ts";
 import { getQuota } from "./shared/quota.ts";
 import { QuotaService } from "./server/quota.ts";
 import { LoginService } from "./server/login.ts";
@@ -17,5 +17,6 @@ export default function contribute(server: PluginServerContext) {
   // Resolve the daemon's configured Pi auth directory per request; configuration changes invalidate the revision.
   server.handle(listAccounts, () => new AccountService().list());
   server.handle(switchAccount, (input) => new AccountService().switch(input, lifetime.signal));
+  server.handle(deleteAccount, (input) => new AccountService().delete(input, lifetime.signal));
   return async () => { lifetime.abort(); await login.dispose(); };
 }

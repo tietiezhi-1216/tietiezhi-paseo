@@ -56,3 +56,13 @@ export const switchAccount = defineRpc({
     notice: z.string(),
   }),
 });
+export const deleteAccount = defineRpc({
+  name: "tietiezhi.accounts.delete",
+  input: z.object({
+    id: z.string().regex(/^(codex|xai|go|antigravity):[a-f0-9]{24}$/),
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+  output: z.object({
+    snapshot: AccountSnapshotSchema,
+  }),
+});
