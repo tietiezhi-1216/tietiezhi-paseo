@@ -71,24 +71,57 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
     }
     if (!project) throw new Error("未提供 Antigravity project；请在 Pi 完成登录");
     // Deliberately do not call onboardUser or refresh tokens.
-    const available = await upstream("fetchAvailableModels", { project });
-    for (const [name, value] of Object.entries(rec(available.models)).slice(0, 100)) {
-      const model = rec(value), quota = rec(model.quotaInfo);
-      const remaining = num(quota.remainingFraction);
-      if (remaining === null) continue;
-      const identity = `${name} ${text(model.modelProvider)}`;
-      const pool = /gemini/i.test(identity) ? "gemini" : /claude|anthropic|gpt-oss/i.test(identity) ? "claude" : null;
+    const [available, summary] = await Promise.all([
+      upstream("fetchAvailableModels", { project }),
+      upstream("retrieveUserQuotaSummary", {}).catch(() => ({})),
+    ]);
+    
+    // First, try to extract windows from the summary.
+    const sum = rec(summary);
+    const groups = (Array.isArray(sum.groups) ? sum.groups : Array.isArray(rec(sum.quotaSummary).groups) ? rec(sum.quotaSummary).groups : []) as unknown[];
+    for (const group of groups) {
+      const row = rec(group);
+      const groupName = typeof row.displayName === "string" ? row.displayName : "";
+      const pool = /gemini/i.test(groupName) ? "gemini" : /claude/i.test(groupName) ? "claude" : null;
       if (!pool) continue;
-      // Labels are fixed; upstream identifiers remain server-side, avoiding accidental secret reflection.
-      const w = normalizeWindow(`${pool}-${windows.length}`, pool === "gemini" ? "Gemini" : "Claude / GPT-OSS", (1 - remaining) * 100, quota.resetTime, pool);
-      if (w) windows.push(w);
+      const buckets = Array.isArray(row.buckets) ? row.buckets : [];
+      for (const bucket of buckets) {
+        const item = rec(bucket);
+        const remaining = num(item.remainingFraction);
+        if (remaining === null) continue;
+        const identity = [item.window, item.displayName, item.bucketId].filter((value) => typeof value === "string").join(" ");
+        const title = /本周|week/i.test(identity) ? "本周" : /5小时|5h|five.?hour/i.test(identity) ? "5小时" : /当天|daily|24h/i.test(identity) ? "当天" : pool === "gemini" ? "Gemini" : "Claude / GPT-OSS";
+        const w = normalizeWindow(`${pool}-${windows.length}`, title, (1 - remaining) * 100, item.resetTime, pool);
+        if (w) windows.push(w);
+      }
     }
-    const pools = new Map<QuotaWindow["pool"], QuotaWindow>();
+
+    // Fallback to fetchAvailableModels if summary is empty.
+    if (!windows.length) {
+      for (const [name, value] of Object.entries(rec(available.models)).slice(0, 100)) {
+        const model = rec(value), quota = rec(model.quotaInfo);
+        const remaining = num(quota.remainingFraction);
+        if (remaining === null) continue;
+        const identity = `${name} ${text(model.modelProvider)}`;
+        const pool = /gemini/i.test(identity) ? "gemini" : /claude|anthropic|gpt-oss/i.test(identity) ? "claude" : null;
+        if (!pool) continue;
+        const w = normalizeWindow(`${pool}-${windows.length}`, pool === "gemini" ? "Gemini" : "Claude / GPT-OSS", (1 - remaining) * 100, quota.resetTime, pool);
+        if (w) windows.push(w);
+      }
+    }
+    // We keep all windows returned by the API so that multiple quotas (e.g. 5 hours and 1 week) are shown.
+    // However, if there are duplicates with the exact same reset time and used percentage, we could filter them out.
+    // The upstream returns different models which map to the same pool and same quota.
+    const seen = new Set<string>();
+    const uniqueWindows = [];
     for (const w of windows) {
-      const previous = pools.get(w.pool);
-      if (!previous || w.usedPercent > previous.usedPercent || (w.usedPercent === previous.usedPercent && (w.resetAt ?? Infinity) < (previous.resetAt ?? Infinity))) pools.set(w.pool, { ...w, id: w.pool });
+      const sig = `${w.pool}:${Math.round(w.usedPercent)}:${Math.round((w.resetAt ?? 0) / 60000)}`;
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        uniqueWindows.push(w);
+      }
     }
-    windows = [...pools.values()];
+    windows = uniqueWindows;
     plan = "Antigravity";
   }
   if (!windows.length) throw new Error("接口未提供可计算的额度百分比");

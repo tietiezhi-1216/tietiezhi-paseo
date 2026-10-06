@@ -104,7 +104,7 @@ test("xAI/Go 缺失比例不当成 0，Antigravity 仅只读查询不 onboard/�
   await assert.rejects(fetchProviderQuota("go", { type: "api_key", key: "fake-go-key" }, async () => { assert.fail("Go 不得发起查询"); }, new AbortController().signal), /停用/);
   const urls: string[] = [];
   const ag = await fetchProviderQuota("antigravity", { ...cred("G"), projectId: "fake-project" }, async (url) => { urls.push(String(url)); return new Response('{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.7,"resetTime":"2030-01-01T00:00:00Z"}},"claude-sonnet":{"quotaInfo":{"remainingFraction":0.2,"resetTime":"2030-01-01T00:00:00Z"}}}}'); }, new AbortController().signal);
-  assert.equal(ag.windows.length, 2); assert.equal(urls.length, 1); assert.match(urls[0], /fetchAvailableModels$/);
+  assert.equal(ag.windows.length, 2); assert.ok(urls.some(url => /fetchAvailableModels$/.test(url)));
   assert.doesNotMatch(urls.join("\n"), /onboard|oauth|token/);
   assert.equal(safeQuotaError(new Error("secret-refresh-ABC")), "额度查询失败或网络超时；保留上次结果");
 });
