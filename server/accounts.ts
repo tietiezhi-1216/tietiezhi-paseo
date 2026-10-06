@@ -317,8 +317,17 @@ export class AccountService {
       
       checkAbort(signal);
       if (registry.archive.content !== null) await this.backup(this.paths.archive, "accounts");
+      await this.backup(this.paths.auth, "auth");
+      
       const newAccounts = registry.accounts.filter(item => item.id !== input.id);
       await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: newAccounts });
+      
+      const authValue = { ...registry.auth.value };
+      if (authValue[account.slot]) {
+        delete authValue[account.slot];
+        await this.atomicWrite(this.paths.auth, authValue);
+      }
+      
       committed = true;
     } finally { await release?.().catch(() => {}); }
     await this.pruneBackups().catch(() => {});

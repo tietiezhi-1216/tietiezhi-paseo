@@ -47,7 +47,7 @@ type QuotaPanelProps = PluginSurfaceProps & { family?: Family; onFamilyChange?: 
 export function QuotaPanel(props: QuotaPanelProps) {
   const [selected, setSelected] = useState<Family>("codex");
   const family = props.family === "go" ? "codex" : props.family ?? selected;
-  return <HostQuotaPanel key={props.host.id + ":" + family} {...props} family={family} onFamilyChange={props.onFamilyChange ?? setSelected} />;
+  return <HostQuotaPanel key={props.host.id} {...props} family={family} onFamilyChange={props.onFamilyChange ?? setSelected} />;
 }
 
 function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: QuotaPanelProps & { family: Family; onFamilyChange(family: Family): void }) {

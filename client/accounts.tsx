@@ -15,7 +15,7 @@ type AccountsPanelProps = PluginSurfaceProps & {
 };
 
 export function AccountsPanel(props: AccountsPanelProps) {
-  return <HostAccounts key={`${props.host.id}:${props.family ?? "all"}`} {...props} />;
+  return <HostAccounts key={props.host.id} {...props} />;
 }
 
 function HostAccounts({ theme, host, family: filterFamily, compact = false, renderDetails, renderSummary, snapshot }: AccountsPanelProps) {
@@ -93,6 +93,7 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
       ) : null}
       {notice ? <Notice theme={theme} text={notice} /> : null}
       {mutation.isError ? <Notice theme={theme} error text={errorText(mutation.error)} /> : null}
+      {deleteMutation.isError ? <Notice theme={theme} error text={errorText(deleteMutation.error)} /> : null}
 
       {confirmation && !compact ? (
         <View testID="account-confirmation" style={{ padding: 10, gap: 7, borderWidth: 1, borderColor: theme.colors.statusWarning, borderRadius: 7 }}>
