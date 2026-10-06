@@ -201,7 +201,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                       <Text numberOfLines={1} style={{ minWidth: 32, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }}>{window.title}</Text>
                       {window.resetAt ? (
                         <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-                          {timeUntilReset(window.resetAt, Date.now())} ({compactDateTime(window.resetAt)})
+                          {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})
                         </Text>
                       ) : null}
                     </View>
@@ -221,18 +221,29 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
       ) : !quota?.windows.length && !pending ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
       ) : (
-        quota?.windows.map((window) => (
-          <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-              {account.subscriptionExpiresAt ? `会员 ${formatDays(account.subscriptionExpiresAt)}到期 · ` : ""}额度 {window.resetAt ? timeUntilReset(window.resetAt, Date.now()) : "未知"}
-            </Text>
-            {window.resetAt ? (
-              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0 }}>
-                {compactDateTime(window.resetAt)}
-              </Text>
-            ) : null}
-          </View>
-        ))
+        quota?.windows.map((window, index) => {
+          const showMembership = index === 0 && account.subscriptionExpiresAt;
+          return (
+            <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
+              {showMembership ? (
+                <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+                  会员 {formatDays(account.subscriptionExpiresAt!)}到期
+                </Text>
+              ) : quota.windows.length > 1 ? (
+                <Text numberOfLines={1} style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "500", flexShrink: 1 }}>
+                  {window.label}
+                </Text>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+              {window.resetAt ? (
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
+                  {compactDateTime(window.resetAt)} 重置 ({timeUntilReset(window.resetAt, Date.now())})
+                </Text>
+              ) : null}
+            </View>
+          );
+        })
       )}
     </View>
   );
