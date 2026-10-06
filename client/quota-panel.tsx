@@ -56,12 +56,13 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const [loginOpen, setLoginOpen] = useState(false);
   const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
+  const rows = data?.snapshot.accounts.filter((account) => account.family === family) ?? [];
   const quotaFor = (account: Account) => data?.quotas.find((item) => item.accountId === account.id);
   return (
     <View testID="quota-panel" style={{ flex: 1, minHeight: 0, gap: 10, width: "100%" }}>
       {/* 头部工具栏：固定的 Tab 与登录按钮在同一行 */}
       <View testID="quota-panel-toolbar" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <View testID="quota-fixed-tabs" style={{ flex: 1, minWidth: 0 }}>
+        <View testID="quota-fixed-tabs" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <ChannelTabs
             theme={theme}
             items={props.layout.compact
@@ -71,6 +72,7 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
             onChange={onFamilyChange}
             prefix="quota-family"
           />
+          {!props.layout.compact ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, fontWeight: "500" }}>{rows.length} 个账号</Text> : null}
         </View>
         <Action
           theme={theme}
@@ -119,52 +121,57 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
   const groups = account.family === "antigravity" ? quotaGroups(quota?.windows ?? []) : [];
   const reset = (at: number | null) => at ? readableResetCountdown(at, Date.now()) : "重置时间未知";
   return (
-    <View style={{ gap: 6, marginTop: 2 }}>
+    <View style={{ marginTop: 2 }}>
       {groups.length ? (
-        groups.map((group) => (
-          <View
-            key={group.pool}
-            testID={"quota-pool-" + group.pool}
-            style={{
-              paddingVertical: 6,
-              paddingHorizontal: 8,
-              gap: 4,
-              borderRadius: 7,
-              borderWidth: 1,
-              backgroundColor: hexAlpha(theme.colors.foreground, 0.025),
-              borderColor: hexAlpha(theme.colors.border, 0.6),
-            }}
-          >
-            <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>{group.title}</Text>
-            {group.windows.map((window, index) => (
-              <View
-                key={window.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  minHeight: 22,
-                  paddingTop: index ? 4 : 0,
-                  borderTopWidth: index ? 1 : 0,
-                  borderTopColor: hexAlpha(theme.colors.border, 0.3),
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, gap: 6 }}>
-                  <Text style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500" }}>{window.title}</Text>
-                  {window.resetAt ? (
-                    <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
-                      ↻ {reset(window.resetAt)}
-                    </Text>
-                  ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {groups.map((group) => (
+            <View
+              key={group.pool}
+              testID={"quota-pool-" + group.pool}
+              style={{
+                flex: 1,
+                minWidth: 200,
+                paddingVertical: 6,
+                paddingHorizontal: 8,
+                gap: 4,
+                borderRadius: 7,
+                borderWidth: 1,
+                backgroundColor: hexAlpha(theme.colors.foreground, 0.025),
+                borderColor: hexAlpha(theme.colors.border, 0.6),
+              }}
+            >
+              <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>{group.title}</Text>
+              {group.windows.map((window, index) => (
+                <View
+                  key={window.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    minHeight: 22,
+                    paddingTop: index ? 4 : 0,
+                    borderTopWidth: index ? 1 : 0,
+                    borderTopColor: hexAlpha(theme.colors.border, 0.3),
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, gap: 6 }}>
+                    <Text style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500" }}>{window.title}</Text>
+                    {window.resetAt ? (
+                      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
+                        ↻ {reset(window.resetAt)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter />
                 </View>
-                <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter />
-              </View>
-            ))}
-          </View>
-        ))
+              ))}
+            </View>
+          ))}
+        </View>
       ) : (
-        quota?.windows.map((window) => (
+        <View style={{ gap: 6 }}>
+          {quota?.windows.map((window) => (
           <View
             key={window.id}
             style={{
@@ -186,6 +193,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter prefix="剩余 " textSize={12} />
           </View>
         ))
+        }</View>
       )}
       {!quota?.windows.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{pending ? "读取中…" : "暂无额度"}</Text>

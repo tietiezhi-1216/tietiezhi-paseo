@@ -142,14 +142,13 @@ export function ChannelTabs<Id extends string>({ theme, items, value, onChange, 
             testID={prefix ? `${prefix}-${id}` : undefined}
             onPress={() => onChange(id)}
             style={{
-              flex: 1,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
               minHeight: 32,
               paddingVertical: 6,
-              paddingHorizontal: 8,
+              paddingHorizontal: 12,
               borderRadius: 6,
               backgroundColor: on ? theme.colors.surface2 : "transparent",
               opacity: on ? 1 : 0.7,
