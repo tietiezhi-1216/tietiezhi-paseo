@@ -113,10 +113,12 @@ export class AccountService {
     for (const path of this.paths.legacy) legacy.push(await document(path, "历史账号文件"));
     const accounts = new Map<string, Candidate>();
     const priorities = new Map<string, number>();
+    const deleted = new Set(Array.isArray(archive.value.deleted) ? (archive.value.deleted as string[]) : []);
     const add = (slot: string, credential: RecordValue, metadata: RecordValue = {}, live = false) => {
       const family = familyOfSlot(slot);
       if (!family || !Object.keys(credential).length) return;
       const id = identity(family, credential);
+      if (deleted.has(id)) return;
       const existing = accounts.get(id);
       const label = string(metadata.label);
       const usage = record(metadata.usage);
@@ -302,12 +304,13 @@ export class AccountService {
   }
 
   async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
-    const release = await lockfile.lock(this.paths.auth, {
-      realpath: false, stale: 10_000, update: 1000, retries: { retries: 5, minTimeout: 100, maxTimeout: 500 },
-      onCompromised() {},
-    }).catch(() => { throw new Error("授权文件正忙，请稍后重试"); });
-    let committed = false;
+    let release: (() => Promise<void>) | undefined;
     try {
+      release = await lockfile.lock(this.paths.auth, {
+        realpath: false, stale: 10_000, update: 1000, retries: { retries: 5, minTimeout: 100, maxTimeout: 500 },
+        onCompromised() {},
+      }).catch(() => { throw new Error("授权文件正忙，请稍后重试"); });
+
       const registry = await this.registry();
       if (input.revision !== registry.snapshot.revision) throw new Error("账号数据已变化，请刷新列表");
       const account = registry.accounts.find((item) => item.id === input.id);
@@ -319,17 +322,35 @@ export class AccountService {
       if (registry.archive.content !== null) await this.backup(this.paths.archive, "accounts");
       await this.backup(this.paths.auth, "auth");
       
-      const newAccounts = registry.accounts.filter(item => item.id !== input.id);
-      await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: newAccounts });
+      const previousDeleted = Array.isArray(registry.archive.value.deleted) ? (registry.archive.value.deleted as string[]) : [];
+      const updatedDeleted = Array.from(new Set([...previousDeleted, input.id]));
+      
+      const newAccounts = registry.accounts.filter((item) => item.id !== input.id);
+      await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: newAccounts, deleted: updatedDeleted });
       
       const authValue = { ...registry.auth.value };
       if (authValue[account.slot]) {
         delete authValue[account.slot];
         await this.atomicWrite(this.paths.auth, authValue);
       }
-      
-      committed = true;
-    } finally { await release?.().catch(() => {}); }
+
+      for (const legacyPath of this.paths.legacy) {
+        try {
+          const legDoc = await document(legacyPath, "历史账号文件");
+          if (Array.isArray(legDoc.value.accounts)) {
+            const filteredLeg = legDoc.value.accounts.filter((raw: any) => {
+              const acc = record(raw);
+              const slotStr = string(acc.slot) ?? string(acc.id) ?? "";
+              const fid = identity(familyOfSlot(slotStr) ?? "codex", record(acc.cred ?? acc.credential));
+              return fid !== input.id;
+            });
+            await this.atomicWrite(legacyPath, { ...legDoc.value, accounts: filteredLeg });
+          }
+        } catch {}
+      }
+    } finally {
+      await release?.().catch(() => {});
+    }
     await this.pruneBackups().catch(() => {});
     return { snapshot: await this.list() };
   }

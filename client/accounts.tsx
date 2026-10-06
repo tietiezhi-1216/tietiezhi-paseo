@@ -42,6 +42,15 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
     mutationFn: (id: string) => deleteRpc({ id, revision: accounts.data!.revision }),
     onSuccess(result) {
       queries.setQueryData(key, result.snapshot);
+      queries.setQueriesData({ queryKey: ["tietiezhi", "quota", host.id] }, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          snapshot: result.snapshot,
+          quotas: Array.isArray(old.quotas) ? old.quotas.filter((q: any) => result.snapshot.accounts.some((a: any) => a.id === q.accountId)) : old.quotas,
+        };
+      });
+      void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id] });
       setNotice("账号已删除");
       setDeleteConf(null);
     },
