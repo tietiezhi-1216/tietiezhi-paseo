@@ -9,6 +9,53 @@ import { compactResetCountdown, readableResetCountdown, absoluteFooterReset, quo
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
 
+export function detectCurrentModelInfo(): { family: Family; pool?: "gemini" | "claude" } | null {
+  if (typeof document === "undefined") return null;
+  const elements = [
+    document.querySelector('[data-testid="combined-model-selector"]'),
+    document.querySelector('[data-testid="agent-controls-model"]'),
+    ...Array.from(document.querySelectorAll('[aria-label*="模型" i], [aria-label*="model" i]')),
+  ];
+  for (const el of elements) {
+    if (!el) continue;
+    const text = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).toLowerCase();
+    if (!text.trim()) continue;
+    if (text.includes("gemini")) return { family: "antigravity", pool: "gemini" };
+    if (text.includes("claude")) return { family: "antigravity", pool: "claude" };
+    if (text.includes("grok") || text.includes("xai")) return { family: "xai" };
+    if (text.includes("gpt") || text.includes("openai") || text.includes("codex") || /\bo[1-4]\b/.test(text)) {
+      if (text.includes("antigravity")) return { family: "antigravity", pool: "claude" };
+      return { family: "codex" };
+    }
+  }
+  return null;
+}
+
+export function useCurrentModel(): { family: Family; pool?: "gemini" | "claude" } | null {
+  const [model, setModel] = useState<{ family: Family; pool?: "gemini" | "claude" } | null>(() => detectCurrentModelInfo());
+  useEffect(() => {
+    const check = () => {
+      const cur = detectCurrentModelInfo();
+      setModel((prev) => {
+        if (!cur && !prev) return prev;
+        if (cur && prev && cur.family === prev.family && cur.pool === prev.pool) return prev;
+        return cur;
+      });
+    };
+    check();
+    const interval = setInterval(check, 1000);
+    const observer = typeof MutationObserver !== "undefined" && typeof document !== "undefined" && document.body
+      ? new MutationObserver(check)
+      : null;
+    observer?.observe(document.body, { subtree: true, childList: true, characterData: true });
+    return () => {
+      clearInterval(interval);
+      observer?.disconnect();
+    };
+  }, []);
+  return model;
+}
+
 export function QuotaFooter(props: PluginSidebarItemProps) { return <HostQuotaFooter key={props.host.id} {...props} />; }
 function HostQuotaFooter(props: PluginSidebarItemProps) {
   const { theme, host } = props;
@@ -16,13 +63,17 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
 
   const [rowWidth, setRowWidth] = useState(240);
   const dense = rowWidth < 230;
-  // Explicit panel selection, not a guessed current session/model. No composer contribution.
-  const [family, setFamilyState] = useState<Family>(() => {
-    try { return (localStorage.getItem("tietiezhi.family") as Family) || "codex"; } catch { return "codex"; }
-  });
-  const setFamily = (f: Family) => { setFamilyState(f); try { localStorage.setItem("tietiezhi.family", f); } catch {} };
+  const detected = useCurrentModel();
+  const [browsedFamily, setBrowsedFamily] = useState<Family | null>(null);
+
+  // Footer displays currently active model in chat
+  const footerFamily = detected?.family ?? "codex";
+  // Modal defaults to active model, but allows browsing other channels
+  const panelFamily = browsedFamily ?? footerFamily;
+  const onPanelFamilyChange = (f: Family) => setBrowsedFamily(f);
+
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
-  const quota = useQuota(host.id, family, null);
+  const quota = useQuota(host.id, footerFamily, null);
   const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const refresh = useMutation({
@@ -39,22 +90,23 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   }, []);
   const data = quota.data;
   const q = data?.quotas.find((a) => a.accountId === data.currentAccountId);
-  const stale = !online || quota.isError || q?.stale || (refresh.variables === family && refresh.isError);
-  const label = quotaFooterLabel(family, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
+  const stale = !online || quota.isError || q?.stale || (refresh.variables === footerFamily && refresh.isError);
+  const label = quotaFooterLabel(footerFamily, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
   const windows = q?.windows ?? [];
-  const meters = [{ name: "", window: selectQuotaWindow(family, family === "antigravity" ? "gemini" : null, windows) }];
+  const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
+  const meters = [{ name: "", window: selectQuotaWindow(footerFamily, activePool, windows) }];
   const time = meters[0]?.window ? absoluteFooterReset(meters[0].window.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 36, paddingHorizontal: dense ? 6 : 8, gap: dense ? 4 : 6 }}>
       <Pressable testID="quota-footer-trigger" accessibilityRole="button" accessibilityLabel={label}
         onPress={() => setOpen(true)} style={{ flexShrink: 1, minWidth: 0, minHeight: 36, flexDirection: "row", alignItems: "center", gap: dense ? 4 : 6 }}>
-        <VendorMark family={family} size={16} />
-        <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1}
+        <VendorMark family={footerFamily} size={16} />
+        <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1} pointerEvents="none"
           style={{ color: stale ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: dense ? 11 : 12, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}{stale ? " · 缓存" : ""}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="刷新额度" disabled={!online || quota.isFetching || refresh.isPending}
-        onPress={() => { if (online) refresh.mutate(family); }} testID="quota-footer-refresh"
+        onPress={() => { if (online) refresh.mutate(footerFamily); }} testID="quota-footer-refresh"
         style={{ minHeight: 36, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, opacity: online ? 1 : 0.55 }}>
         {(meters.length ? meters : [{ name: "", window: null }]).map((meter) => <View key={meter.name} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
           {meter.name ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>{meter.name}</Text> : null}
@@ -63,9 +115,9 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
         </View>)}
       </Pressable>
     </View>
-    <Modal title="模型额度" icon={<VendorMark family={family} size={18} />} open={open} onOpenChange={setOpen}>
+    <Modal title="模型额度" icon={<VendorMark family={panelFamily} size={18} />} open={open} onOpenChange={(val) => { setOpen(val); if (!val) setBrowsedFamily(null); }}>
       <Modal.Content scrollable={false} style={{ backgroundColor: theme.colors.surface0 }} contentContainerStyle={{ padding: 16, gap: 10, flex: 1 }}>
-        <QuotaPanel {...props} family={family} onFamilyChange={setFamily} />
+        <QuotaPanel {...props} family={panelFamily} onFamilyChange={onPanelFamilyChange} />
       </Modal.Content>
     </Modal>
   </>;

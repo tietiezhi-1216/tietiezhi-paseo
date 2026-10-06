@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRpc, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,11 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
   const [confirmation, setConfirmation] = useState<{ account: Account; revision: string } | null>(null);
   const [deleteConf, setDeleteConf] = useState<Account | null>(null);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    setConfirmation(null);
+    setDeleteConf(null);
+  }, [filterFamily]);
   const deleteRpc = useRpc(deleteAccount);
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteRpc({ id, revision: accounts.data!.revision }),
@@ -51,7 +56,6 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
         };
       });
       void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id] });
-      setNotice("账号已删除");
       setDeleteConf(null);
     },
     onError() {
@@ -63,7 +67,7 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
     onSuccess(result) {
       queries.setQueryData(key, result.snapshot);
       void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id] });
-      setNotice(result.backupCreated ? "已切换 · 已备份" : "已切换");
+      if (!compact) setNotice(result.backupCreated ? "已切换 · 已备份" : "已切换");
       setConfirmation(null);
     },
     onError() {
@@ -100,7 +104,7 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
           {accounts.data.warnings.map((warning) => <Notice key={warning} theme={theme} text={warning} />)}
         </Disclosure>
       ) : null}
-      {notice ? <Notice theme={theme} text={notice} /> : null}
+      {!compact && notice ? <Notice theme={theme} text={notice} /> : null}
       {mutation.isError ? <Notice theme={theme} error text={errorText(mutation.error)} /> : null}
       {deleteMutation.isError ? <Notice theme={theme} error text={errorText(deleteMutation.error)} /> : null}
 

@@ -22,7 +22,8 @@ try {
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   browser = await chromium.launch({ headless: true, ...(existsSync(chromePath) ? { executablePath: chromePath } : {}) });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  const errors = []; page.on("pageerror", (error) => console.error("[PAGEERROR]", error));
+  page.on("console", (msg) => console.log("[BROWSER]", msg.text()));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.getByTestId("agent-row").first().waitFor();
   assert.equal(await page.getByTestId("agent-row").count(), 2);
@@ -85,7 +86,8 @@ try {
   await quotaLabel("Codex · 剩余 72%", 72);
   await page.getByTestId("quota-footer-refresh").click();
   assert.equal(await panel.count(), 0, "刷新按钮不能顺带打开额度面板");
-  await footer.click(); await panel.waitFor();
+  await footer.click();
+  await panel.waitFor();
   await panel.getByTestId("quota-account-card").first().waitFor();
   assert.equal(await panel.getByTestId("quota-account-card").count(), 2);
   await panel.getByTestId("quota-account-card").nth(1).getByText("35%", { exact: true }).waitFor();
@@ -140,11 +142,12 @@ try {
   assert.equal(await panel.getByTestId("quota-account-card").count(), 0);
   await page.keyboard.press("Escape"); await panel.waitFor({ state: "hidden" });
 
-  // No hidden focus bridge: model changes do not masquerade as automatic current-model tracking.
+  // Dynamic model tracking: footer reflects currently active model in composer
   await page.evaluate(() => globalThis.__preview.selectModel("openai-codex-account-2/gpt-5.5"));
-  await page.getByRole("button", { name: "AG · 未获取", exact: true }).waitFor();
-  await footer.click(); await panel.getByTestId("quota-family-antigravity").click();
-  await page.getByRole("button", { name: "AG · 未获取", exact: true }).waitFor();
+  await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).waitFor();
+  await page.evaluate(() => globalThis.__preview.selectModel("google/gemini-2.5-flash"));
+  await page.getByTestId("quota-footer-card").getByRole("img", { name: "Antigravity" }).waitFor();
+  await footer.click();
   await page.evaluate(() => globalThis.__preview.seedQuotaAccounts("antigravity", 24));
   await panel.getByTestId("quota-pool-gemini").first().waitFor();
   await panel.getByTestId("quota-pool-claude").first().waitFor();
@@ -168,6 +171,7 @@ try {
   await panel.getByTestId("quota-account-card").first().waitFor();
   await page.screenshot({ path: join(root, ".artifacts/ui/grok-accounts-dark.png") });
   await page.evaluate(() => globalThis.__preview.seedQuotaAccounts("xai", 0));
+  await page.evaluate(() => globalThis.__preview.selectModel("openai-codex-account-1/gpt-5.5"));
   await panel.getByTestId("quota-family-codex").click();
   await quotaLabel("Codex · 剩余 72%", 72);
   await page.keyboard.press("Escape");

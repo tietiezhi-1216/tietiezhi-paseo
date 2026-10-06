@@ -212,7 +212,10 @@ function App() {
           <div data-testid="sidebar-system-icons" style={{ padding: 12, fontSize: 12, borderTop: `1px solid ${theme.colors.border}` }}>主机 · 设置（模拟原生栏）</div>
         </aside>
         <main style={{ flex: 1, minWidth: 0 }}>
-          <header style={{ padding: 16, borderBottom: `1px solid ${theme.colors.border}` }}>模拟数据预览</header>
+          <header style={{ padding: 16, borderBottom: `1px solid ${theme.colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>模拟数据预览</span>
+            <button data-testid="combined-model-selector" aria-label={`模型 · ${agentModel}`} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, background: theme.colors.surface1, color: theme.colors.foreground, border: `1px solid ${theme.colors.border}` }}>{agentModel}</button>
+          </header>
           <div style={{ maxWidth: 1000, margin: "auto", height: "calc(100vh - 56px)" }}>
             {pluginActive ? <DashboardScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }}
               theme={theme} layout={layout} params={{}}
