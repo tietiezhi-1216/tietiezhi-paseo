@@ -1,6 +1,7 @@
 {
   "id": "tietiezhi",
   "requirements": {
-    "paseo": ">=0.10.2"
-  }
+    "paseo": ">=0.11.0-beta.4"
+  },
+  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]]
 }

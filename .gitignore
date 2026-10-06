@@ -1,9 +1,16 @@
 node_modules/
 dist/
 coverage/
+.artifacts/
 .DS_Store
 .env
 .env.*
 !.env.example
 *.log
 devices.local.json
+.paseo/
+.pi/
+**/auth.json
+**/accounts.json
+*.bak
+*.tmp

@@ -1,9 +1,16 @@
 {
   "name": "tietiezhi",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Paseo account switching and multi-host Agent dashboard",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
   "files": [
     "paseo-plugin.json",
+    "THIRD_PARTY_NOTICES.md",
     "index.client.ts",
     "index.client.tsx",
     "index.server.ts",
@@ -13,15 +20,29 @@
     "shared/"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:ui": "node tests/browser/run.mjs"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.10.2",
+    "@getpaseo/client": "0.11.0-beta.4",
+    "@getpaseo/plugin": "0.11.0-beta.4",
+    "@getpaseo/protocol": "0.11.0-beta.4",
     "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^24.19.1",
+    "@types/proper-lockfile": "4.1.4",
     "@types/react": "~19.2.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-web": "0.21.2",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.87.1",
+    "proper-lockfile": "4.1.2"
   }
 }

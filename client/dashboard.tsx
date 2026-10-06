@@ -1,23 +1,36 @@
-import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { Text, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, Text, View } from "react-native";
+import { useAgent, type PluginAgentPanelProps, type PluginScreenProps, type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { AccountsPanel } from "./accounts.tsx";
+import { AgentsPanel } from "./agents.tsx";
+import { HostsPanel } from "./hosts.tsx";
+import { Tabs, Notice } from "./ui.tsx";
 
-const modules = [
-  { title: "额度查看", description: "模型账号、登录授权与用量管理（待实现）" },
-  { title: "状态展示", description: "当前 Agent 的计划、待办与后台任务（待实现）" },
-  { title: "Agent 展示", description: "本机及远程 Agent 状态与会话导航（待实现）" },
-];
-
-export function DashboardSurface({ theme, layout }: PluginSurfaceProps) {
+type Tab = "accounts" | "agents" | "hosts";
+function DashboardBody({ props, initialTab, children }: {
+  props: PluginSurfaceProps; initialTab: Tab; children?: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const { theme, layout } = props;
   return (
-    <View style={{ flex: 1, padding: layout.compact ? 16 : 24, gap: 16, backgroundColor: theme.colors.surface0 }}>
-      <Text style={{ color: theme.colors.foreground, fontSize: 22, fontWeight: "700" }}>tietiezhi</Text>
-      <Text style={{ color: theme.colors.foregroundMuted }}>项目骨架已初始化，业务功能将分阶段实现。</Text>
-      {modules.map((module) => (
-        <View key={module.title} style={{ padding: 16, gap: 8, borderRadius: 8, backgroundColor: theme.colors.surface1 }}>
-          <Text style={{ color: theme.colors.foreground, fontSize: 16, fontWeight: "600" }}>{module.title}</Text>
-          <Text style={{ color: theme.colors.foregroundMuted }}>{module.description}</Text>
-        </View>
-      ))}
-    </View>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
+      contentContainerStyle={{ padding: layout.compact ? 12 : 16, gap: 10 }}>
+      {children}
+      <Tabs theme={theme} items={[["agents", "Agents"], ["accounts", "账号"], ["hosts", "主机"]]} value={tab} onChange={setTab} prefix="tab" />
+      {tab === "accounts" ? <AccountsPanel {...props} /> : tab === "agents" ? <AgentsPanel {...props} /> : <HostsPanel {...props} />}
+    </ScrollView>
+  );
+}
+export function DashboardScreen(props: PluginScreenProps) {
+  const tab: Tab = props.params.tab === "accounts" || props.params.tab === "hosts" ? props.params.tab : "agents";
+  return <DashboardBody key={`${props.host.id}:${tab}`} props={props} initialTab={tab} />;
+}
+export function AgentDashboard(props: PluginAgentPanelProps) {
+  const current = useAgent(props.agentId, (agent) => ({ title: agent.title, status: agent.status, provider: agent.provider, model: agent.model }));
+  return (
+    <DashboardBody key={`${props.host.id}:${props.agentId}`} props={props} initialTab="agents">
+      <Text style={{ color: props.theme.colors.foreground, fontSize: 14, fontWeight: "600" }}>{current?.title ?? props.agentId}</Text>
+      <Notice theme={props.theme} text={current ? `${current.provider} / ${current.model ?? "默认模型"} · ${current.status}` : "当前会话暂不可用"} />
+    </DashboardBody>
   );
 }
