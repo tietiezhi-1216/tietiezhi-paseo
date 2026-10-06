@@ -33,6 +33,11 @@ export function liveResetCountdown(resetAt: number | null | undefined, now: numb
   return `${days ? `${days}天 ` : ""}${clock}`;
 }
 
+export function timeUntilReset(resetAt: number | null | undefined, now: number): string {
+  const text = readableResetCountdown(resetAt, now, true);
+  return text.replace("重置时间未知", "未知").replace("等待重置", "等待重置").replace("后重置", "后");
+}
+
 export function compactResetCountdown(resetAt: number | null | undefined, now: number): string {
   return resetCountdown(resetAt, now)
     .replace("分钟后刷新", "分").replace("小时后刷新", "时").replace("天后刷新", "天")

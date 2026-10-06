@@ -135,11 +135,8 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
                       style={{ minHeight: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}
                     >
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-                        {selected ? (
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.accent }} />
-                        ) : null}
-                        <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: selected ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: 13, fontWeight: selected ? "700" : "500", flexShrink: 1 }}>
-                          {account.label}
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: selected ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: 13, fontWeight: selected ? "700" : "500", flexShrink: 1 }}>
+                          {selected ? "● " : ""}{account.label}
                         </Text>
                         {account.plan ? (
                           <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, backgroundColor: selected ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)", flexShrink: 0 }}>
