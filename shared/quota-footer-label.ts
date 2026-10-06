@@ -21,6 +21,18 @@ export function readableResetCountdown(resetAt: number | null | undefined, now: 
   return compact ? text.replaceAll(" ", "") : text;
 }
 
+export function absoluteFooterReset(resetAt: number | null | undefined, now: number): string {
+  if (resetAt == null || !Number.isFinite(resetAt) || !Number.isFinite(now)) return "未知重置";
+  const duration = resetAt - now;
+  if (duration <= 0) return "等待重置";
+  const date = new Date(resetAt);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (duration < 86400000) {
+    return `${pad(date.getHours())}:${pad(date.getMinutes())} 重置`;
+  }
+  return `${date.getMonth() + 1}/${date.getDate()} 重置`;
+}
+
 export function liveResetCountdown(resetAt: number | null | undefined, now: number, seconds = true): string {
   if (resetAt == null || !Number.isFinite(resetAt) || !Number.isFinite(now)) return "—";
   const total = Math.ceil((resetAt - now) / 1000);

@@ -40,7 +40,7 @@ try {
   }
   await quotaLabel("Codex · 剩余 72%", 72);
   await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).waitFor();
-  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^[23] 小时后重置$/);
+  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^\d{2}:\d{2} 重置$/);
   assert.equal(await page.getByTestId("quota-footer-level").count(), 0);
   assert.equal(await page.getByTestId("quota-footer-expiry").count(), 0);
   const iconBox = await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).boundingBox();
@@ -52,12 +52,12 @@ try {
   assert.equal(circleBox.width, 14);
   assert.equal(circleBox.height, 14);
   assert.equal(await page.getByTestId("quota-footer-arc").count(), 0);
-  const percentBox = await page.getByTestId("quota-footer-refresh").getByText("剩余 72%", { exact: true }).boundingBox();
-  assert.ok(percentBox.x + percentBox.width <= circleBox.x, "圆环应紧邻剩余额度右侧");
+  const percentBox = await page.getByTestId("quota-footer-refresh").getByText("72%", { exact: true }).boundingBox();
+  assert.ok(circleBox.x + circleBox.width <= percentBox.x, "圆环应在剩余额度左侧");
   assert.ok(Math.abs((percentBox.y + percentBox.height / 2) - (circleBox.y + circleBox.height / 2)) < 2, "百分比和圆环在同一行居中");
-  assert.ok(meterBox.x - (countdownBox.x + countdownBox.width) <= 7, "时间与额度不能有大段空白");
+  assert.ok(meterBox.x - (countdownBox.x + countdownBox.width) >= 10, "时间与额度在左右两端");
   assert.ok(countdownBox.x + countdownBox.width <= meterBox.x, "文字不能重叠额度仪表");
-  await page.getByTestId("quota-footer-refresh").getByText("剩余 72%", { exact: true }).waitFor();
+  await page.getByTestId("quota-footer-refresh").getByText("72%", { exact: true }).waitFor();
   await page.getByTestId("quota-footer-refresh").getByLabel("剩余额度 72%", { exact: true }).waitFor();
   const add = await page.getByTestId("sidebar-add-project").boundingBox(), card = await page.getByTestId("quota-footer-card").boundingBox(), icons = await page.getByTestId("sidebar-system-icons").boundingBox();
   assert.ok(card.height <= 44, "额度入口必须只有一行");
@@ -71,12 +71,12 @@ try {
   await page.getByTestId("demo-sidebar-preview").evaluate((element) => { element.style.width = "190px"; });
   await page.evaluate(() => globalThis.__preview.quotaResetOffset((5 * 86400 + 19 * 3600 + 5 * 60 + 7) * 1000));
   await page.getByTestId("quota-footer-refresh").click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.startsWith("5天19小时"));
+  await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.includes("重置"));
   assert.equal(await page.getByTestId("quota-footer-countdown").evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true, "窄栏倒计时不能被省略号截断");
   const narrowTime = await page.getByTestId("quota-footer-countdown").boundingBox();
   const narrowMeter = await page.getByTestId("quota-footer-refresh").boundingBox();
   assert.ok(narrowTime.x + narrowTime.width <= narrowMeter.x, "倒计时不能被圆环遮挡");
-  await page.getByTestId("quota-footer-refresh").getByText("剩余72%", { exact: true }).waitFor();
+  await page.getByTestId("quota-footer-refresh").getByText("72%", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("quota-footer-refresh").evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true, "剩余额度不截断");
   await page.getByTestId("quota-footer-card").screenshot({ path: join(root, ".artifacts/ui/quota-footer-narrow-dark.png") });
   await page.evaluate(() => globalThis.__preview.quotaResetOffset(3 * 3600000));

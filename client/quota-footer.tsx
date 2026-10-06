@@ -5,7 +5,7 @@ import { Modal } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type Family } from "../shared/accounts.ts";
 import { getQuota, selectQuotaWindow } from "../shared/quota.ts";
-import { compactResetCountdown, readableResetCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
+import { compactResetCountdown, readableResetCountdown, absoluteFooterReset, quotaFooterLabel } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
 
@@ -43,25 +43,23 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const label = quotaFooterLabel(family, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
   const windows = q?.windows ?? [];
   const meters = [{ name: "", window: selectQuotaWindow(family, family === "antigravity" ? "gemini" : null, windows) }];
-  const time = meters.length > 1
-    ? meters.map((meter) => `${meter.name}${compactResetCountdown(meter.window?.resetAt, Date.now()).replace("分", "m").replace("时", "h").replace("天", "d")}`).join("/")
-    : meters[0]?.window ? readableResetCountdown(meters[0].window.resetAt, Date.now(), dense) : quota.isFetching ? "读取中…" : "—";
+  const time = meters[0]?.window ? absoluteFooterReset(meters[0].window.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
-      style={{ minWidth: 0, flexDirection: "row", alignItems: "center", minHeight: 36, paddingHorizontal: dense ? 6 : 8, gap: dense ? 4 : 6 }}>
+      style={{ minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 36, paddingHorizontal: dense ? 6 : 8, gap: dense ? 4 : 6 }}>
       <Pressable testID="quota-footer-trigger" accessibilityRole="button" accessibilityLabel={label}
         onPress={() => setOpen(true)} style={{ flexShrink: 1, minWidth: 0, minHeight: 36, flexDirection: "row", alignItems: "center", gap: dense ? 4 : 6 }}>
         <VendorMark family={family} size={16} />
         <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1}
-          style={{ color: stale ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: dense || meters.length > 1 ? 10 : 12, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}{stale ? " · 缓存" : ""}</Text>
+          style={{ color: stale ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: dense ? 11 : 12, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}{stale ? " · 缓存" : ""}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="刷新额度" disabled={!online || quota.isFetching || refresh.isPending}
         onPress={() => { if (online) refresh.mutate(family); }} testID="quota-footer-refresh"
         style={{ minHeight: 36, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 5, opacity: online ? 1 : 0.55 }}>
         {(meters.length ? meters : [{ name: "", window: null }]).map((meter) => <View key={meter.name} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
           {meter.name ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>{meter.name}</Text> : null}
-          <QuotaMeter theme={theme} used={meter.window?.usedPercent ?? null} size={14} remaining ringRemaining
-            compact prefix={meters.length > 1 ? "" : dense ? "剩余" : "剩余 "} textSize={meters.length > 1 ? 10 : dense ? 11 : 12} circleAfter strokeWidth={2.5} />
+          <QuotaMeter theme={theme} used={meter.window?.usedPercent ?? null} size={14} remaining ringRemaining circleAfter={false}
+            compact prefix="" textSize={dense ? 11 : 12} strokeWidth={2.5} />
         </View>)}
       </Pressable>
     </View>
