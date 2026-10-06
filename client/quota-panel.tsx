@@ -152,7 +152,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
     <View style={{ marginTop: 2, gap: 4 }}>
       {account.subscriptionExpiresAt && groups.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-          📅 会员到期：{formatDays(account.subscriptionExpiresAt)} · {compactDateTime(account.subscriptionExpiresAt)}
+          会员 {formatDays(account.subscriptionExpiresAt)}到期 · {compactDateTime(account.subscriptionExpiresAt)}
         </Text>
       ) : null}
       {groups.length ? (
@@ -201,7 +201,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                       <Text numberOfLines={1} style={{ minWidth: 32, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }}>{window.title}</Text>
                       {window.resetAt ? (
                         <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-                          ↻ {timeUntilReset(window.resetAt, Date.now())} ({compactDateTime(window.resetAt)})
+                          {timeUntilReset(window.resetAt, Date.now())} ({compactDateTime(window.resetAt)})
                         </Text>
                       ) : null}
                     </View>
@@ -224,7 +224,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         quota?.windows.map((window) => (
           <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-              {account.subscriptionExpiresAt ? `📅 ${formatDays(account.subscriptionExpiresAt)}到期  ` : ""}↻ 刷新：{window.resetAt ? timeUntilReset(window.resetAt, Date.now()) : "未知"}
+              {account.subscriptionExpiresAt ? `会员 ${formatDays(account.subscriptionExpiresAt)}到期 · ` : ""}额度 {window.resetAt ? timeUntilReset(window.resetAt, Date.now()) : "未知"}
             </Text>
             {window.resetAt ? (
               <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0 }}>

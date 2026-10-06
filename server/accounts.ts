@@ -302,8 +302,8 @@ export class AccountService {
   }
 
   async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
-    const release = await lockfile.lock(this.paths.archive, {
-      stale: 10_000, update: 1000, retries: { retries: 5, minTimeout: 100, maxTimeout: 500 },
+    const release = await lockfile.lock(this.paths.auth, {
+      realpath: false, stale: 10_000, update: 1000, retries: { retries: 5, minTimeout: 100, maxTimeout: 500 },
       onCompromised() {},
     }).catch(() => { throw new Error("授权文件正忙，请稍后重试"); });
     let committed = false;
