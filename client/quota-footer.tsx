@@ -87,7 +87,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   });
   const [, setTick] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setTick((tick) => tick + 1), 60_000);
+    const timer = setInterval(() => setTick((tick) => tick + 1), 1000);
     return () => clearInterval(timer);
   }, []);
   const data = quota.data;

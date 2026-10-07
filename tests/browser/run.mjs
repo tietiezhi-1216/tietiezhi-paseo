@@ -41,7 +41,7 @@ try {
   }
   await quotaLabel("Codex · 剩余 72%", 72);
   await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).waitFor();
-  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^[1-9]\d*小时后$/);
+  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^[1-9]\d*小时(\d+分钟)?后$/);
   assert.equal(await page.getByTestId("quota-footer-level").count(), 0);
   assert.equal(await page.getByTestId("quota-footer-expiry").count(), 0);
   const iconBox = await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).boundingBox();

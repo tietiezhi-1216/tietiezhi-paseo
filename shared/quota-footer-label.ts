@@ -25,12 +25,22 @@ export function naturalCountdown(resetAt: number | null | undefined, now: number
   if (resetAt == null || !Number.isFinite(resetAt) || !Number.isFinite(now)) return "—";
   const duration = resetAt - now;
   if (duration <= 0) return "待刷新";
-  const days = Math.floor(duration / 86400000);
-  if (days >= 1) return `${days}天后`;
-  const hours = Math.floor(duration / 3600000);
-  if (hours >= 1) return `${hours}小时后`;
-  const minutes = Math.max(1, Math.ceil(duration / 60000));
-  return `${minutes}分钟后`;
+  const totalSeconds = Math.floor(duration / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days >= 1) {
+    return `${days}天${hours > 0 ? `${hours}小时` : ""}后`;
+  }
+  if (hours >= 1) {
+    return `${hours}小时${minutes > 0 ? `${minutes}分钟` : ""}后`;
+  }
+  if (minutes >= 1) {
+    return `${minutes}分钟${seconds > 0 ? `${seconds}秒` : ""}后`;
+  }
+  return `${seconds}秒后`;
 }
 
 export function absoluteFooterReset(resetAt: number | null | undefined, now: number): string {
