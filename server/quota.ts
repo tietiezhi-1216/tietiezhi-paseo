@@ -51,8 +51,12 @@ export class QuotaService {
     const timer = setTimeout(abort, 15_000);
     const signal = controller.signal;
     const cached = legacyQuotaWindows(account.cachedUsage).filter((w) => account.family !== "antigravity" || w.pool !== "shared");
+    const tokenBefore = account.credential.access;
     try {
       const quota = await fetchProviderQuota(account.family, account.credential, this.fetcher, signal);
+      if (account.credential.access !== tokenBefore) {
+        void this.accounts().updateCredential(account.id, account.credential).catch(() => {});
+      }
       return { accountId: account.id, ...quota, fetchedAt: this.now(), checkedAt: this.now(), stale: false, error: null };
     } catch (error) {
       return {

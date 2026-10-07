@@ -303,6 +303,20 @@ export class AccountService {
     }
   }
 
+  async updateCredential(id: string, credential: RecordValue): Promise<void> {
+    try {
+      const registry = await this.registry();
+      const target = registry.accounts.find((a) => a.id === id);
+      if (!target) return;
+      target.credential = { ...target.credential, ...credential };
+      await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: registry.accounts });
+      if (registry.snapshot.accounts.find((a) => a.id === id)?.active) {
+        const authValue = { ...registry.auth.value, [LIVE_SLOTS[target.family]]: target.credential };
+        await this.atomicWrite(this.paths.auth, authValue);
+      }
+    } catch {}
+  }
+
   async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
     let release: (() => Promise<void>) | undefined;
     try {
