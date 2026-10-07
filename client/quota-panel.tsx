@@ -18,7 +18,7 @@ const CHANNEL_TABS = [
 
 const persistentQuotaStore: Record<string, AccountQuota> = (() => {
   try {
-    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v1") || "{}");
+    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v2") || "{}");
   } catch {
     return {};
   }
@@ -28,14 +28,14 @@ function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined) {
   if (!quotas || !quotas.length) return;
   let changed = false;
   for (const q of quotas) {
-    if (q && q.accountId && (q.windows.length > 0 || q.error)) {
-      persistentQuotaStore[q.accountId] = q;
+    if (q && q.accountId && q.windows.length > 0) {
+      persistentQuotaStore[q.accountId] = { ...q, error: null };
       changed = true;
     }
   }
   if (changed) {
     try {
-      localStorage.setItem("tietiezhi.quotas.cache.v1", JSON.stringify(persistentQuotaStore));
+      localStorage.setItem("tietiezhi.quotas.cache.v2", JSON.stringify(persistentQuotaStore));
     } catch {}
   }
 }
@@ -149,14 +149,14 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
               );
             }
             const q = quotaFor(account);
-            if (!q || !q.windows.length || q.stale || q.error) {
+            const window = selectQuotaWindow(account.family, null, q?.windows ?? []);
+            if (!window) {
               return (
                 <Text style={{ color: account.active ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 11, fontWeight: account.active ? "600" : "500" }}>
                   {account.active ? "✓ 默认" : "切换"}
                 </Text>
               );
             }
-            const window = selectQuotaWindow(account.family, null, q.windows);
             return (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 {window ? (
@@ -188,8 +188,8 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
     return d > 0 ? `${Math.ceil(d)}天后` : "已到期";
   };
 
-  // If the account has an error or is unauthenticated, render a single clean status, without redundant pool boxes
-  if (quota?.error) {
+  // If there are no windows and an error exists, show single clean error label
+  if (quota?.error && !quota.windows.length) {
     return (
       <View style={{ marginTop: 2, paddingVertical: 2 }}>
         <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
@@ -295,6 +295,11 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         </View>
       ) : !quota?.windows.length && !pending ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
+      ) : null}
+      {quota?.error && quota.windows.length ? (
+        <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 11 }}>
+          {quotaFailureLabel(quota.error)}
+        </Text>
       ) : null}
     </View>
   );
