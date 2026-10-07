@@ -74,6 +74,8 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
 
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const quota = useQuota(host.id, footerFamily, null);
+  // Prefetch detailed quota in background so opening the modal is 100% instant with zero delay
+  useQuota(host.id, footerFamily, null, true);
   const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const refresh = useMutation({

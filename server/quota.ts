@@ -17,14 +17,13 @@ export class QuotaService {
     if (input.family === "go") throw new Error("此渠道已停用");
     const registry = await this.accounts().quotaCredentials(input.family, input.slot ?? LIVE_SLOTS[input.family]);
     const entries = input.all ? registry.entries : registry.entries.filter((a) => a.id === registry.currentAccountId);
-    const quotas: AccountQuota[] = [];
-    // Bounded, sequential requests; switching while a read is pending cannot misattribute its result.
-    for (const account of entries) {
+    // Parallel queries across accounts for instant multi-account response
+    const quotaPromises = entries.map(async (account) => {
       if (signal?.aborted) throw new Error("插件已停止");
       const fingerprint = createHash("sha256").update(JSON.stringify(account.credential)).digest("hex");
-      const key = `${account.id}:${fingerprint}`;
+      const key = account.id + ":" + fingerprint;
       const old = this.cache.get(key);
-      if (old && this.now() - old.attemptedAt < (input.refresh ? 5_000 : 60_000)) { quotas.push(old.result); continue; }
+      if (old && this.now() - old.attemptedAt < (input.refresh ? 5_000 : 60_000)) { return old.result; }
       let work = this.pending.get(key);
       if (!work) {
         const previous = old?.result ?? [...this.cache.values()].filter((v) => v.result.accountId === account.id).sort((a, b) => b.attemptedAt - a.attemptedAt)[0]?.result;
@@ -37,8 +36,9 @@ export class QuotaService {
         }).finally(() => this.pending.delete(key));
         this.pending.set(key, work);
       }
-      quotas.push(await work);
-    }
+      return await work;
+    });
+    const quotas = await Promise.all(quotaPromises);
     if (signal?.aborted) throw new Error("插件已停止");
     const latest = await this.accounts().quotaCredentials(input.family, input.slot ?? LIVE_SLOTS[input.family]);
     return { snapshot: latest.snapshot, family: input.family, currentAccountId: latest.currentAccountId,

@@ -28,7 +28,8 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
       return result;
     },
     enabled: enabled && online && family !== null && family !== "go",
-    staleTime: 30_000, gcTime: 0, retry: false,
+    staleTime: 60_000, gcTime: 10 * 60_000, retry: false,
+    placeholderData: (previousData) => previousData,
     refetchInterval: enabled && online && family && family !== "go" ? 60_000 : false,
   });
 }
@@ -55,8 +56,13 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
   const queries = useQueryClient();
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const [loginOpen, setLoginOpen] = useState(false);
-  const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
-  const rows = data?.snapshot.accounts.filter((account) => account.family === family) ?? [];
+  const data = quota.data
+    ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, true])
+    ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
+  const accountsSnapshot = queries.getQueryData<any>(["tietiezhi", "accounts", host.id]);
+  const rows = accountsSnapshot?.accounts.filter((account: any) => account.family === family)
+    ?? data?.snapshot.accounts.filter((account) => account.family === family)
+    ?? [];
   const quotaFor = (account: Account) => data?.quotas.find((item) => item.accountId === account.id);
   return (
     <View testID="quota-panel" style={{ flex: 1, minHeight: 0, gap: 10, width: "100%" }}>
