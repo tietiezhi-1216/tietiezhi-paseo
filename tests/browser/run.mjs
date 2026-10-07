@@ -41,7 +41,7 @@ try {
   }
   await quotaLabel("Codex · 剩余 72%", 72);
   await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).waitFor();
-  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^\d{2}:\d{2} 重置$/);
+  assert.match(await page.getByTestId("quota-footer-countdown").innerText(), /^[1-9]\d*小时后$/);
   assert.equal(await page.getByTestId("quota-footer-level").count(), 0);
   assert.equal(await page.getByTestId("quota-footer-expiry").count(), 0);
   const iconBox = await page.getByTestId("quota-footer-card").getByRole("img", { name: "OpenAI" }).boundingBox();
@@ -72,7 +72,7 @@ try {
   await page.getByTestId("demo-sidebar-preview").evaluate((element) => { element.style.width = "190px"; });
   await page.evaluate(() => globalThis.__preview.quotaResetOffset((5 * 86400 + 19 * 3600 + 5 * 60 + 7) * 1000));
   await page.getByTestId("quota-footer-refresh").click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.includes("重置"));
+  await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.includes("后"));
   assert.equal(await page.getByTestId("quota-footer-countdown").evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true, "窄栏倒计时不能被省略号截断");
   const narrowTime = await page.getByTestId("quota-footer-countdown").boundingBox();
   const narrowMeter = await page.getByTestId("quota-footer-refresh").boundingBox();

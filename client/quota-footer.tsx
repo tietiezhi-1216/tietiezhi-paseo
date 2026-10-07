@@ -5,7 +5,7 @@ import { Modal } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type Family } from "../shared/accounts.ts";
 import { getQuota, selectQuotaWindow } from "../shared/quota.ts";
-import { compactResetCountdown, readableResetCountdown, absoluteFooterReset, quotaFooterLabel } from "../shared/quota-footer-label.ts";
+import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
 
@@ -97,7 +97,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const windows = q?.windows ?? [];
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
   const meters = [{ name: "", window: selectQuotaWindow(footerFamily, activePool, windows) }];
-  const time = meters[0]?.window ? absoluteFooterReset(meters[0].window.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
+  const time = meters[0]?.window ? naturalCountdown(meters[0].window.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 36, paddingHorizontal: dense ? 6 : 8, gap: dense ? 4 : 6 }}>
