@@ -181,9 +181,9 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
               testID={"quota-pool-" + group.pool}
               style={{
                 width: "100%",
-                paddingVertical: 6,
-                paddingHorizontal: 8,
-                gap: 5,
+                paddingVertical: 7,
+                paddingHorizontal: 10,
+                gap: 6,
                 borderRadius: 7,
                 backgroundColor: hexAlpha(theme.colors.foreground, 0.025),
               }}
@@ -207,8 +207,8 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                     borderTopColor: hexAlpha(theme.colors.border, 0.3),
                   }}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ width: 42, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
                     {window.resetAt ? (
                       <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
                         {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})

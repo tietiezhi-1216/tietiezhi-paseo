@@ -82,7 +82,7 @@ export function QuotaMeter({ used, theme, size = 16, muted = false, remaining = 
         fontSize: textSize ?? (compact ? 12 : size >= 16 ? 13 : 11),
         fontWeight: emphasized ? "600" : "500",
         lineHeight: size,
-        minWidth: compact ? 26 : 32,
+        minWidth: compact ? 30 : 38,
         textAlign: "right",
         fontVariant: ["tabular-nums"],
       }}>
