@@ -16,6 +16,30 @@ const CHANNEL_TABS = [
   ["codex", "Codex", "codex"], ["xai", "Grok", "xai"], ["antigravity", "Antigravity", "antigravity"],
 ] as const;
 
+const persistentQuotaStore: Record<string, AccountQuota> = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v1") || "{}");
+  } catch {
+    return {};
+  }
+})();
+
+function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined) {
+  if (!quotas || !quotas.length) return;
+  let changed = false;
+  for (const q of quotas) {
+    if (q && q.accountId && (q.windows.length > 0 || q.error)) {
+      persistentQuotaStore[q.accountId] = q;
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      localStorage.setItem("tietiezhi.quotas.cache.v1", JSON.stringify(persistentQuotaStore));
+    } catch {}
+  }
+}
+
 export function useQuota(hostId: string, family: Family | null, slot: string | null, all = false, enabled = true) {
   const rpc = useRpc(getQuota);
   const online = useHosts().find((h) => h.serverId === hostId)?.status === "online";
@@ -63,7 +87,16 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
   const rows = accountsSnapshot?.accounts.filter((account: any) => account.family === family)
     ?? data?.snapshot.accounts.filter((account) => account.family === family)
     ?? [];
-  const quotaFor = (account: Account) => data?.quotas.find((item) => item.accountId === account.id);
+  if (data?.quotas) {
+    updatePersistentQuotas(data.quotas);
+  }
+  const quotaFor = (account: Account): AccountQuota | undefined => {
+    const live = data?.quotas.find((item) => item.accountId === account.id);
+    if (live && (live.windows.length > 0 || live.error)) return live;
+    const persistent = persistentQuotaStore[account.id];
+    if (persistent) return persistent;
+    return live;
+  };
   return (
     <View testID="quota-panel" style={{ flex: 1, minHeight: 0, gap: 10, width: "100%" }}>
       {/* 头部工具栏：固定的 Tab 与登录按钮在同一行 */}
@@ -225,10 +258,8 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         <View style={{ paddingVertical: 6 }}>
           <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>缓存数据</Text>
         </View>
-      ) : !quota?.windows.length && !pending ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
-      ) : (
-        quota?.windows.map((window, index) => {
+      ) : quota?.windows.length ? (
+        quota.windows.map((window, index) => {
           const showMembership = index === 0 && account.subscriptionExpiresAt;
           return (
             <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
@@ -251,7 +282,20 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </View>
           );
         })
-      )}
+      ) : account.subscriptionExpiresAt ? (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
+          <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+            会员 {formatDays(account.subscriptionExpiresAt)}到期
+          </Text>
+          {quota?.windows[0]?.resetAt ? (
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
+              {compactDateTime(quota.windows[0].resetAt)} 重置 ({timeUntilReset(quota.windows[0].resetAt, Date.now())})
+            </Text>
+          ) : null}
+        </View>
+      ) : !quota?.windows.length && !pending ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
+      ) : null}
     </View>
   );
 }

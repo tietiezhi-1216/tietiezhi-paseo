@@ -103,9 +103,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const onPanelFamilyChange = (f: Family) => setBrowsedFamily(f);
 
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
-  const quota = useQuota(host.id, footerFamily, null);
-  // Prefetch detailed quota in background so opening the modal is 100% instant with zero delay
-  useQuota(host.id, footerFamily, null, true);
+  const quota = useQuota(host.id, footerFamily, null, true);
   const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const refresh = useMutation({
@@ -114,7 +112,6 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
       return rpc({ family: selected, refresh: true });
     },
     onSuccess(result, selected) {
-      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
       queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, (old: any) => {
         if (!old) return result;
         const newQuotas = Array.isArray(old.quotas) ? [...old.quotas] : [];
@@ -124,6 +121,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
         }
         return { ...old, ...result, quotas: newQuotas };
       });
+      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
     },
   });
   const [, setTick] = useState(0);

@@ -66,6 +66,15 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
     mutationFn: (selection: NonNullable<typeof confirmation>) => change({ id: selection.account.id, revision: selection.revision, confirmed: true }),
     onSuccess(result) {
       queries.setQueryData(key, result.snapshot);
+      // Seamlessly update currentAccountId in React Query caches so all accounts retain their existing quotas
+      queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id] }, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          snapshot: result.snapshot,
+          currentAccountId: result.snapshot.accounts.find((a: any) => a.active)?.id ?? old.currentAccountId,
+        };
+      });
       void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id] });
       if (!compact) setNotice(result.backupCreated ? "已切换 · 已备份" : "已切换");
       setConfirmation(null);
