@@ -80,7 +80,7 @@ export function QuotaMeter({ used, theme, size = 16, muted = false, remaining = 
       <Text numberOfLines={1} style={{
         color: muted ? theme.colors.foregroundMuted : theme.colors.foreground,
         fontSize: textSize ?? (compact ? 12 : size >= 16 ? 13 : 11),
-        fontWeight: emphasized ? "600" : "400",
+        fontWeight: emphasized ? "600" : "500",
         lineHeight: size,
         minWidth: compact ? 26 : 32,
         textAlign: "right",
