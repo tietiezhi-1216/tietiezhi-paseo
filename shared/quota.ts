@@ -25,6 +25,29 @@ export function selectQuotaWindow(family: Family, model: string | null, windows:
     if (!pool) return null;
     candidates = candidates.filter((w) => w.pool === pool || w.pool === "shared");
   }
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  const now = Date.now();
+  // 1. Critical bottleneck: if any quota is critically low (remaining <= 20%, i.e. used >= 80%),
+  // always surface the worst critical bottleneck to warn the user!
+  const critical = candidates.filter((w) => w.usedPercent >= 80);
+  if (critical.length) {
+    return critical.reduce((worst, w) => w.usedPercent > worst.usedPercent ? w : worst);
+  }
+
+  // 2. Short-term window priority: short-term rolling limits (e.g. 5-hour window, or resetting within 12h)
+  // are the immediate lifeline for continuous coding.
+  const shortTerm = candidates.filter((w) => {
+    const isFiveHour = /5小时|5h|five.?hour/i.test(w.label) || /5小时|5h/i.test(w.id);
+    const resetsSoon = w.resetAt != null && (w.resetAt - now) <= 12 * 3600 * 1000;
+    return isFiveHour || resetsSoon;
+  });
+  if (shortTerm.length) {
+    return shortTerm.reduce((worst, w) => w.usedPercent > worst.usedPercent ? w : worst);
+  }
+
+  // 3. Fallback: pick the window with lowest remaining percentage (highest used)
   return candidates.reduce<QuotaWindow | null>((worst, w) => !worst || w.usedPercent > worst.usedPercent ? w : worst, null);
 }
 export const AccountQuotaSchema = z.object({
