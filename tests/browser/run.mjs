@@ -71,7 +71,7 @@ try {
   // Reproduce the user's narrow sidebar with a multi-day countdown.
   await page.getByTestId("demo-sidebar-preview").evaluate((element) => { element.style.width = "190px"; });
   await page.evaluate(() => globalThis.__preview.quotaResetOffset((5 * 86400 + 19 * 3600 + 5 * 60 + 7) * 1000));
-  await page.getByTestId("quota-footer-refresh").click();
+  await page.getByTestId("quota-footer-card").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.includes("后"));
   await page.keyboard.press("Escape");
   assert.equal(await page.getByTestId("quota-footer-countdown").evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true, "窄栏倒计时不能被省略号截断");

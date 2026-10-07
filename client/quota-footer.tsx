@@ -4,7 +4,7 @@ import { useHosts, useRpc, type PluginSidebarItemProps } from "@getpaseo/plugin/
 import { Modal } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type Family } from "../shared/accounts.ts";
-import { getQuota, selectQuotaWindow } from "../shared/quota.ts";
+import { type QuotaSnapshot, getQuota, selectQuotaWindow } from "../shared/quota.ts";
 import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
@@ -25,44 +25,35 @@ function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claud
 export function detectCurrentModelInfo(): { family: Family; pool?: "gemini" | "claude" } | null {
   if (typeof document === "undefined") return null;
 
-  // 1. Check testIDs if present (development/testing)
-  const byId = document.querySelector('[data-testid="combined-model-selector"]')
-    || document.querySelector('[data-testid="agent-controls-model"]');
-  if (byId) {
-    const parsed = parseModelText((byId.getAttribute("aria-label") || "") + " " + (byId.textContent || ""));
-    if (parsed) return parsed;
-  }
+  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
 
-  // 2. Exact match on Paseo ComboboxTrigger aria-label: "选择模型（Gemini 3.8 Flash）" / "Select model (Gemini 3.8 Flash)"
-  const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-  for (const b of buttons) {
+  // 1. Primary: find visible model selector button in active chat (offsetParent !== null and width > 0)
+  const activeButtons = allButtons.filter((b: any) => {
+    if (b.offsetParent === null) return false;
+    const r = b.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  });
+
+  for (const b of activeButtons) {
     const label = b.getAttribute("aria-label") || "";
-    const match = /(?:选择模型|select model|model)[（(]([^）)]+)[）)]/i.exec(label);
+    const text = b.textContent || "";
+    const match = /(?:选择模型|select model)[（(]([^）)]+)[）)]/i.exec(label);
     if (match) {
       const parsed = parseModelText(match[1]);
       if (parsed) return parsed;
     }
-  }
-
-  // 3. Look near the composer / chat input area
-  const inputEl = document.querySelector('textarea, [contenteditable="true"]');
-  if (inputEl) {
-    const composer = inputEl.closest('form') || inputEl.parentElement?.parentElement?.parentElement;
-    if (composer) {
-      const composerButtons = Array.from(composer.querySelectorAll('button, [role="button"]'));
-      for (const b of composerButtons) {
-        const parsed = parseModelText((b.getAttribute("aria-label") || "") + " " + (b.textContent || ""));
-        if (parsed) return parsed;
-      }
+    if (/gemini|claude|grok|gpt|chatgpt/i.test(label) || /gemini|claude|grok|gpt|chatgpt/i.test(text)) {
+      const parsed = parseModelText(label + " " + text);
+      if (parsed) return parsed;
     }
   }
 
-  // 4. Scan all buttons from bottom to top (chat composer is at the bottom of the window)
-  for (const b of [...buttons].reverse()) {
+  // 2. Fallback to any button with model pattern
+  for (const b of allButtons) {
     const label = b.getAttribute("aria-label") || "";
-    const text = b.textContent || "";
-    if (/gemini|claude|grok|xai|codex/i.test(label) || /gemini|claude|grok|xai|codex/i.test(text)) {
-      const parsed = parseModelText(label + " " + text);
+    const match = /(?:选择模型|select model)[（(]([^）)]+)[）)]/i.exec(label);
+    if (match) {
+      const parsed = parseModelText(match[1]);
       if (parsed) return parsed;
     }
   }
@@ -122,15 +113,26 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
       if (selected === "go") throw new Error("此渠道已停用");
       return rpc({ family: selected, refresh: true });
     },
-    onSuccess(result, selected) { queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result); },
+    onSuccess(result, selected) {
+      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
+      queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, (old: any) => {
+        if (!old) return result;
+        const newQuotas = Array.isArray(old.quotas) ? [...old.quotas] : [];
+        for (const q of result.quotas) {
+          const idx = newQuotas.findIndex(item => item.accountId === q.accountId);
+          if (idx >= 0) newQuotas[idx] = q; else newQuotas.push(q);
+        }
+        return { ...old, ...result, quotas: newQuotas };
+      });
+    },
   });
   const [, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((tick) => tick + 1), 1000);
     return () => clearInterval(timer);
   }, []);
-  const data = quota.data;
-  const q = data?.quotas.find((a) => a.accountId === data.currentAccountId);
+  const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, false]);
+  const q = data?.quotas.find((a: any) => a.accountId === data.currentAccountId) ?? data?.quotas[0];
   const stale = !online || quota.isError || q?.stale || (refresh.variables === footerFamily && refresh.isError);
   const label = quotaFooterLabel(footerFamily, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
   const windows = q?.windows ?? [];

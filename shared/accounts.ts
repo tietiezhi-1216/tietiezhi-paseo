@@ -66,3 +66,5 @@ export const deleteAccount = defineRpc({
     snapshot: AccountSnapshotSchema,
   }),
 });
+
+
