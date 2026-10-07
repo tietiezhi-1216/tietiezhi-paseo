@@ -154,6 +154,18 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
     const d = (ts - Date.now()) / 86400000;
     return d > 0 ? `${Math.ceil(d)}天后` : "已到期";
   };
+
+  // If the account has an error or is unauthenticated, render a single clean status, without redundant pool boxes
+  if (quota?.error) {
+    return (
+      <View style={{ marginTop: 2, paddingVertical: 2 }}>
+        <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
+          {quotaFailureLabel(quota.error)}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={{ marginTop: 2, gap: 4 }}>
       {account.subscriptionExpiresAt && groups.length ? (
@@ -181,47 +193,37 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 {group.pool === "claude" && account.active ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>当前会话</Text> : null}
                 {group.pool === "gemini" && quota?.stale === false ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>刷新于 {compactDateTime(Date.now()).split(" ")[1]}</Text> : null}
               </View>
-              {quota?.stale || quota?.error ? (
-                <View style={{ paddingVertical: 12, alignItems: "center" }}>
-                  <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>
-                    {quota.error ? quotaFailureLabel(quota.error) : "缓存数据"}
-                  </Text>
-                </View>
-              ) : (
-                group.windows.map((window, index) => (
-                  <View
-                    key={window.id}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      minHeight: 22,
-                      paddingTop: index ? 6 : 0,
-                      borderTopWidth: index ? 1 : 0,
-                      borderTopColor: hexAlpha(theme.colors.border, 0.3),
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ width: 42, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
-                      {window.resetAt ? (
-                        <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
-                          {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})
-                        </Text>
-                      ) : null}
-                    </View>
-                    <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+              {group.windows.map((window, index) => (
+                <View
+                  key={window.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    minHeight: 22,
+                    paddingTop: index ? 6 : 0,
+                    borderTopWidth: index ? 1 : 0,
+                    borderTopColor: hexAlpha(theme.colors.border, 0.3),
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ width: 42, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
+                    {window.resetAt ? (
+                      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
+                        {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})
+                      </Text>
+                    ) : null}
                   </View>
-                ))
-              )}
+                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+                </View>
+              ))}
             </View>
           ))}
         </View>
-      ) : quota?.stale || quota?.error ? (
+      ) : quota?.stale ? (
         <View style={{ paddingVertical: 6 }}>
-          <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>
-            {quota.error ? quotaFailureLabel(quota.error) : "缓存数据"}
-          </Text>
+          <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>缓存数据</Text>
         </View>
       ) : !quota?.windows.length && !pending ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
