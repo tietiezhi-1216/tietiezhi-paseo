@@ -14,6 +14,29 @@ export function normalizeWindow(id: string, label: string, used: unknown, reset:
   const p = percent(used);
   return p === null ? null : { id: id.slice(0, 200), label: label.slice(0, 100), usedPercent: p, resetAt: epoch(reset), pool };
 }
+function resolveProxyUrl(): string | null {
+  const env = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+  if (env) return env;
+  if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
+    return `http://${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`;
+  }
+  return "http://127.0.0.1:12334";
+}
+
+let cachedProxyAgent: any = null;
+function getProxyAgent(): any {
+  if (cachedProxyAgent !== null) return cachedProxyAgent;
+  const proxyUrl = resolveProxyUrl();
+  if (!proxyUrl) return undefined;
+  try {
+    const { HttpsProxyAgent } = require("https-proxy-agent");
+    cachedProxyAgent = new HttpsProxyAgent(proxyUrl);
+    return cachedProxyAgent;
+  } catch {
+    return undefined;
+  }
+}
+
 const GOOGLE_CLIENT_ID =
   process.env.ANTIGRAVITY_CLIENT_ID ||
   Buffer.from("MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlc" + "C5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==", "base64").toString();
@@ -22,6 +45,7 @@ const GOOGLE_CLIENT_SECRET =
   Buffer.from("R09DU1BYLUs1OEZXUjQ" + "4NkxkTEoxbUxCOHNYQzR6NnFEQWY=", "base64").toString();
 
 export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; expires: number } | null> {
+  const agent = getProxyAgent();
   try {
     const response = await fetcher("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -32,6 +56,7 @@ export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fet
         refresh_token: refresh,
         grant_type: "refresh_token",
       }),
+      ...(agent ? { agent } as any : {}),
     });
     if (!response.ok) return null;
     const data = rec(await response.json());
@@ -63,7 +88,15 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
   if (!token || token.startsWith("!")) throw new Error("此授权类型不支持额度查询");
 
   const request = async (url: string, init: RequestInit = {}) => {
-    let response = await fetcher(url, { ...init, redirect: "error", signal, headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers } });
+    const agent = getProxyAgent();
+    const fetchInit: any = {
+      ...init,
+      redirect: "error",
+      signal,
+      headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
+      ...(agent ? { agent } : {}),
+    };
+    let response = await fetcher(url, fetchInit);
     if (response.status === 401 && family === "antigravity" && refreshToken) {
       const refreshed = await refreshGoogleToken(refreshToken, fetcher);
       if (refreshed) {

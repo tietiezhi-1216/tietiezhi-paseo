@@ -29,8 +29,13 @@ export class QuotaService {
         const previous = old?.result ?? [...this.cache.values()].filter((v) => v.result.accountId === account.id).sort((a, b) => b.attemptedAt - a.attemptedAt)[0]?.result;
         work = this.query(account, previous, signal).then((result) => {
           if (!signal?.aborted) {
-            this.cache.set(key, { result, attemptedAt: this.now() });
-            while (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value!);
+            if (!result.error) {
+              this.cache.set(key, { result, attemptedAt: this.now() });
+              while (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value!);
+            } else {
+              // Errors are only cached for 5 seconds to allow fast automatic retry
+              this.cache.set(key, { result, attemptedAt: this.now() - 55_000 });
+            }
           }
           return result;
         }).finally(() => this.pending.delete(key));

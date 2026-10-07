@@ -145,7 +145,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
         style={{ flexShrink: 1, minWidth: 0, minHeight: 30, flexDirection: "row", alignItems: "center", gap: 6 }}>
         <VendorMark family={footerFamily} size={15} />
         <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1}
-          style={{ color: stale ? theme.colors.statusWarning : theme.colors.foreground, fontSize: 12, fontWeight: "500", lineHeight: 16, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}{stale ? " · 缓存" : ""}</Text>
+          style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "500", lineHeight: 16, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}</Text>
       </View>
       <View testID="quota-footer-refresh" pointerEvents="none"
         aria-disabled={!online || quota.isFetching || refresh.isPending}
