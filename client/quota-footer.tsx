@@ -9,25 +9,64 @@ import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaF
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
 
+function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claude" } | null {
+  const text = raw.toLowerCase().trim();
+  if (!text) return null;
+  if (text.includes("gemini")) return { family: "antigravity", pool: "gemini" };
+  if (text.includes("claude")) return { family: "antigravity", pool: "claude" };
+  if (text.includes("grok") || text.includes("xai")) return { family: "xai" };
+  if (text.includes("gpt") || text.includes("openai") || text.includes("codex") || /\bo[1-4]\b/.test(text)) {
+    if (text.includes("antigravity")) return { family: "antigravity", pool: "claude" };
+    return { family: "codex" };
+  }
+  return null;
+}
+
 export function detectCurrentModelInfo(): { family: Family; pool?: "gemini" | "claude" } | null {
   if (typeof document === "undefined") return null;
-  const elements = [
-    document.querySelector('[data-testid="combined-model-selector"]'),
-    document.querySelector('[data-testid="agent-controls-model"]'),
-    ...Array.from(document.querySelectorAll('[aria-label*="模型" i], [aria-label*="model" i]')),
-  ];
-  for (const el of elements) {
-    if (!el) continue;
-    const text = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).toLowerCase();
-    if (!text.trim()) continue;
-    if (text.includes("gemini")) return { family: "antigravity", pool: "gemini" };
-    if (text.includes("claude")) return { family: "antigravity", pool: "claude" };
-    if (text.includes("grok") || text.includes("xai")) return { family: "xai" };
-    if (text.includes("gpt") || text.includes("openai") || text.includes("codex") || /\bo[1-4]\b/.test(text)) {
-      if (text.includes("antigravity")) return { family: "antigravity", pool: "claude" };
-      return { family: "codex" };
+
+  // 1. Check testIDs if present (development/testing)
+  const byId = document.querySelector('[data-testid="combined-model-selector"]')
+    || document.querySelector('[data-testid="agent-controls-model"]');
+  if (byId) {
+    const parsed = parseModelText((byId.getAttribute("aria-label") || "") + " " + (byId.textContent || ""));
+    if (parsed) return parsed;
+  }
+
+  // 2. Exact match on Paseo ComboboxTrigger aria-label: "选择模型（Gemini 3.8 Flash）" / "Select model (Gemini 3.8 Flash)"
+  const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+  for (const b of buttons) {
+    const label = b.getAttribute("aria-label") || "";
+    const match = /(?:选择模型|select model|model)[（(]([^）)]+)[）)]/i.exec(label);
+    if (match) {
+      const parsed = parseModelText(match[1]);
+      if (parsed) return parsed;
     }
   }
+
+  // 3. Look near the composer / chat input area
+  const inputEl = document.querySelector('textarea, [contenteditable="true"]');
+  if (inputEl) {
+    const composer = inputEl.closest('form') || inputEl.parentElement?.parentElement?.parentElement;
+    if (composer) {
+      const composerButtons = Array.from(composer.querySelectorAll('button, [role="button"]'));
+      for (const b of composerButtons) {
+        const parsed = parseModelText((b.getAttribute("aria-label") || "") + " " + (b.textContent || ""));
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  // 4. Scan all buttons from bottom to top (chat composer is at the bottom of the window)
+  for (const b of [...buttons].reverse()) {
+    const label = b.getAttribute("aria-label") || "";
+    const text = b.textContent || "";
+    if (/gemini|claude|grok|xai|codex/i.test(label) || /gemini|claude|grok|xai|codex/i.test(text)) {
+      const parsed = parseModelText(label + " " + text);
+      if (parsed) return parsed;
+    }
+  }
+
   return null;
 }
 
