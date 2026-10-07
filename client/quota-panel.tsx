@@ -254,10 +254,6 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </View>
           ))}
         </View>
-      ) : quota?.stale ? (
-        <View style={{ paddingVertical: 6 }}>
-          <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>缓存数据</Text>
-        </View>
       ) : quota?.windows.length ? (
         quota.windows.map((window, index) => {
           const showMembership = index === 0 && account.subscriptionExpiresAt;
