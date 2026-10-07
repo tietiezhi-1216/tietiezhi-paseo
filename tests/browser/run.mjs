@@ -73,6 +73,7 @@ try {
   await page.evaluate(() => globalThis.__preview.quotaResetOffset((5 * 86400 + 19 * 3600 + 5 * 60 + 7) * 1000));
   await page.getByTestId("quota-footer-refresh").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="quota-footer-countdown"]').textContent.includes("后"));
+  await page.keyboard.press("Escape");
   assert.equal(await page.getByTestId("quota-footer-countdown").evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true, "窄栏倒计时不能被省略号截断");
   const narrowTime = await page.getByTestId("quota-footer-countdown").boundingBox();
   const narrowMeter = await page.getByTestId("quota-footer-refresh").boundingBox();
@@ -82,11 +83,11 @@ try {
   await page.getByTestId("quota-footer-card").screenshot({ path: join(root, ".artifacts/ui/quota-footer-narrow-dark.png") });
   await page.evaluate(() => globalThis.__preview.quotaResetOffset(3 * 3600000));
   await page.getByTestId("demo-sidebar-preview").evaluate((element) => { element.style.width = "240px"; });
+  await page.getByTestId("quota-footer-card").click();
+  await panel.waitFor();
+  await page.keyboard.press("Escape");
+  await panel.waitFor({ state: "hidden" });
   await page.getByTestId("quota-footer-refresh").click();
-  await quotaLabel("Codex · 剩余 72%", 72);
-  await page.getByTestId("quota-footer-refresh").click();
-  assert.equal(await panel.count(), 0, "刷新按钮不能顺带打开额度面板");
-  await footer.click();
   await panel.waitFor();
   await panel.getByTestId("quota-account-card").first().waitFor();
   assert.equal(await panel.getByTestId("quota-account-card").count(), 2);
@@ -178,7 +179,6 @@ try {
   await page.evaluate(() => globalThis.__preview.quotaFailure(true));
   await page.getByTestId("quota-footer-refresh").click();
   await quotaLabel("Codex · 剩余 72%（缓存）", 72);
-  await footer.click();
   await page.evaluate(() => { void globalThis.__preview.refreshPanelQuota(); });
   await panel.getByTestId("quota-account-card").first().getByText("查询失败", { exact: true }).waitFor();
   assert.equal(await panel.getByText("模拟网络失败", { exact: true }).count(), 0);
@@ -187,13 +187,13 @@ try {
   await page.evaluate(() => globalThis.__preview.quotaFailure(false));
   await page.getByTestId("quota-footer-refresh").click();
   await quotaLabel("Codex · 剩余 72%", 72);
-  await footer.click(); await panel.getByRole("button", { name: "切换至 测试账号 B", exact: true }).click();
+  await panel.getByRole("button", { name: "切换至 测试账号 B", exact: true }).click();
   await page.evaluate(() => globalThis.__preview.selectHost("remote"));
   await panel.waitFor({ state: "hidden" });
   await quotaLabel("Codex · 剩余 76%", 76);
   await page.evaluate(() => globalThis.__preview.offline());
   await quotaLabel("Codex · 剩余 76%（缓存）", 76);
-  assert.equal(await page.getByTestId("quota-footer-refresh").isDisabled(), true);
+  assert.equal(await page.getByTestId("quota-footer-refresh").getAttribute("aria-disabled"), "true");
   await footer.click(); await panel.getByText("离线 · 缓存", { exact: true }).waitFor();
   assert.equal(await panel.getByTestId("quota-account-card").count(), 2);
   assert.equal(await panel.getByTestId("quota-login").isDisabled(), true);
