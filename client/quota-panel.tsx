@@ -162,17 +162,16 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         </Text>
       ) : null}
       {groups.length ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+        <View style={{ gap: 6, marginTop: 4 }}>
           {groups.map((group) => (
             <View
               key={group.pool}
               testID={"quota-pool-" + group.pool}
               style={{
-                flex: 1,
-                minWidth: 200,
+                width: "100%",
                 paddingVertical: 6,
                 paddingHorizontal: 8,
-                gap: 6,
+                gap: 5,
                 borderRadius: 7,
                 backgroundColor: hexAlpha(theme.colors.foreground, 0.025),
               }}
@@ -203,10 +202,10 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                       borderTopColor: hexAlpha(theme.colors.border, 0.3),
                     }}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0, gap: 6 }}>
-                      <Text numberOfLines={1} style={{ minWidth: 32, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }}>{window.title}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ width: 42, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
                       {window.resetAt ? (
-                        <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+                        <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
                           {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})
                         </Text>
                       ) : null}
