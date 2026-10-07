@@ -1,26 +1,11 @@
-import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plugin/client";
-import { SidebarRow } from "@getpaseo/plugin/client/ui";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { DashboardScreen, AgentDashboard } from "./client/dashboard.tsx";
 import { AccountsPanel } from "./client/accounts.tsx";
-import { DialogDemoSidebar } from "./client/dialog-demo.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
-
-function DashboardItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
-  return (
-    <SidebarRow
-      icon="PanelsTopLeft"
-      label="tietiezhi"
-      active={currentScreen?.screenId === "dashboard"}
-      onPress={() => openScreen({ screenId: "dashboard" })}
-    />
-  );
-}
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
     client.addScreen({ id: "dashboard", title: "tietiezhi", Component: DashboardScreen }),
-    client.addSidebarHeaderItem({ id: "dashboard", title: "tietiezhi", Component: DashboardItem }),
-    client.addSidebarHeaderItem({ id: "dialog-demo", title: "对话 Log 示例", Component: DialogDemoSidebar }),
     client.addSidebarFooterItem({ id: "footer-demo", title: "模型额度", Component: QuotaFooter }),
     client.addSettingsScreen({ id: "accounts", title: "账号切换", icon: "Users", Component: AccountsPanel }),
     client.addWorkspacePanel({

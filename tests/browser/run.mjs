@@ -27,7 +27,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.getByTestId("agent-row").first().waitFor();
   assert.equal(await page.getByTestId("agent-row").count(), 2);
-  assert.deepEqual(await page.evaluate(() => globalThis.__preview.sidebarItems()), { header: ["dashboard", "dialog-demo"], footer: ["footer-demo"] });
+  assert.deepEqual(await page.evaluate(() => globalThis.__preview.sidebarItems()), { header: [], footer: ["footer-demo"] });
   const footer = page.getByTestId("quota-footer-trigger");
   const panel = page.getByRole("dialog", { name: "模型额度", exact: true });
   assert.equal(await page.evaluate(() => globalThis.__preview.pillRegistrations()), 0);
@@ -222,21 +222,7 @@ try {
   await page.getByRole("button", { name: "显示子 Agent", exact: true }).click(); assert.equal(await page.getByTestId("agent-row").count(), 3);
   await page.getByTestId("agent-search").fill("MacBook"); assert.equal(await page.getByTestId("agent-row").count(), 1); await page.getByTestId("agent-search").fill("");
 
-  const demo = page.getByTestId("dialog-demo-trigger"), log = page.getByRole("dialog", { name: /^对话 Log ·/ });
-  await demo.click(); await log.waitFor(); assert.equal(await log.getByTestId("dialog-log-row").count(), 8);
-  await log.getByTestId("dialog-filter-tools").click(); assert.equal(await log.getByTestId("dialog-log-row").count(), 3);
-  await log.getByTestId("dialog-log-search").fill("TYPECHECK"); assert.equal(await log.getByTestId("dialog-log-row").count(), 1);
-  await log.getByRole("button", { name: "复制显示的日志", exact: true }).click();
-  const copied = await page.evaluate(() => globalThis.__preview.calls.findLast((c) => c.kind === "copy")); assert.match(copied.text, /模拟记录/); assert.match(copied.text, /typecheck/);
-  await log.getByTestId("dialog-append").click(); assert.equal(await log.getByTestId("dialog-log-row").count(), 9); await page.keyboard.press("Escape");
-  await page.clock.install({ time: new Date("2026-10-04T12:00:00Z") }); await page.clock.pauseAt(new Date("2026-10-04T12:01:00Z"));
-  await page.getByTestId("sidebar-demo-toggle").click(); await page.clock.runFor(5000);
-  await page.getByRole("button", { name: "25% · 执行中（模拟）", exact: true }).waitFor();
-  await demo.click(); assert.equal(await log.getAttribute("aria-label"), "对话 Log · 执行中 · 25%（模拟）");
-  await log.getByTestId("dialog-demo-toggle").click(); await page.clock.runFor(3000); assert.equal(await page.getByTestId("sidebar-demo-progress").getAttribute("aria-valuenow"), "25");
-  await log.getByTestId("dialog-demo-toggle").click(); await page.clock.runFor(15000);
-  await page.getByRole("button", { name: "100% · 已完成（模拟）", exact: true }).waitFor();
-  await log.getByTestId("dialog-demo-reset").click(); await page.keyboard.press("Escape"); await page.clock.resume();
+
 
   await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => { globalThis.__preview.light(); globalThis.scrollTo(0, 0); });
   await page.screenshot({ path: join(root, ".artifacts/ui/pi-quota-footer-mobile-light.png") });
