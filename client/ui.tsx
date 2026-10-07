@@ -24,7 +24,7 @@ export function VendorMark({ family, size = 16 }: { family: Family; size?: numbe
   );
 }
 
-export function RemainingBar({ used, theme, size = 16, remaining = false, strokeWidth }: {
+export function RemainingBar({ used, theme, size = 16, remaining = true, strokeWidth }: {
   used: number | null | undefined;
   theme: PluginTheme;
   size?: number;
@@ -59,7 +59,7 @@ export function RemainingBar({ used, theme, size = 16, remaining = false, stroke
   </View>;
 }
 
-export function QuotaMeter({ used, theme, size = 16, muted = false, remaining = true, ringRemaining = false, emphasized = false, compact = false, strokeWidth, prefix = "", textSize, circleAfter = false }: {
+export function QuotaMeter({ used, theme, size = 16, muted = false, remaining = true, ringRemaining = remaining, emphasized = false, compact = false, strokeWidth, prefix = "", textSize, circleAfter = false }: {
   used: number | null | undefined;
   theme: PluginTheme;
   size?: number;

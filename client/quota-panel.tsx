@@ -127,7 +127,7 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
             return (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 {window ? (
-                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter={false} prefix="" textSize={12} />
                 ) : null}
               </View>
             );
@@ -215,7 +215,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                       </Text>
                     ) : null}
                   </View>
-                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining circleAfter={false} prefix="" textSize={12} />
+                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter={false} prefix="" textSize={12} />
                 </View>
               ))}
             </View>
