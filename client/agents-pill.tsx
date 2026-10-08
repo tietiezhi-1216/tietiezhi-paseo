@@ -34,15 +34,16 @@ function formatRelativeTime(value: string | null): string {
 }
 
 function agentsPillState(agents: RemoteAgent[] | undefined, pending: boolean, failed: boolean): { label: string; colorKind: PillColorKind } {
-  if (!agents && pending) return { label: "读取中", colorKind: "unknown" };
-  if (failed) return { label: "读取失败", colorKind: "failure" };
+  if (!agents && pending) return { label: "loading", colorKind: "unknown" };
+  if (failed) return { label: "offline", colorKind: "failure" };
   const error = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "error").length;
-  if (error > 0) return { label: `失败 ${error}`, colorKind: "failure" };
-  const done = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "done").length;
-  if (done > 0) return { label: `完成 ${done}`, colorKind: "success" };
+  if (error > 0) return { label: `error · ${error}`, colorKind: "failure" };
   const working = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "working").length;
-  if (working > 0) return { label: `工作中 ${working}`, colorKind: "running" };
-  return { label: `共 ${(agents ?? []).length}`, colorKind: "unknown" };
+  if (working > 0) return { label: `working · ${working}`, colorKind: "running" };
+  const done = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "done").length;
+  if (done > 0) return { label: `done · ${done}`, colorKind: "success" };
+  const total = (agents ?? []).length;
+  return { label: `idle · ${total}`, colorKind: "unknown" };
 }
 
 function pillColor(kind: PillColorKind, theme: Theme): string {
@@ -200,9 +201,30 @@ function useOwnedAgents(hostId: string, hostName: string) {
 }
 
 function AgentsStatusIcon(props: PluginButtonIconProps) {
-  const owned = useOwnedAgents(props.host.id, "name" in props.host && typeof props.host.name === "string" ? props.host.name : "");
+  const owned = useOwnedAgents(props.host.id, "name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : "");
   const state = agentsPillState(owned.agents, owned.isPending, owned.isError);
-  return <StatusDot color={pillColor(state.colorKind, props.theme)} size={props.size} />;
+  const pulse = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    if (state.colorKind !== "running") return;
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.4, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ]));
+    animation.start();
+    return () => animation.stop();
+  }, [pulse, state.colorKind]);
+
+  const color = pillColor(state.colorKind, props.theme);
+  const dot = Math.max(7, Math.round(props.size * 0.5));
+  return (
+    <View style={{ width: props.size, height: props.size, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View style={{
+        width: dot, height: dot, borderRadius: dot / 2,
+        backgroundColor: color,
+        opacity: state.colorKind === "running" ? pulse : 1,
+      }} />
+    </View>
+  );
 }
 
 function AgentActivity({ theme, compact, currentServerId, hostName, query, onSelectAgent }: {
@@ -298,9 +320,27 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   );
 }
 
+const HIDE_SCROLLBAR_CSS = `
+.paseo-no-scrollbar::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+.paseo-no-scrollbar { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+`;
+
+function injectScrollbarStyles() {
+  if (typeof document === "undefined") return;
+  const id = "paseo-agents-scrollbar-style";
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = HIDE_SCROLLBAR_CSS;
+  document.head?.appendChild(style);
+}
+
 let activeAgentsPopoverCloser: (() => void) | null = null;
 
 function AgentsPopover(props: PluginButtonContentProps) {
+  useEffect(() => {
+    injectScrollbarStyles();
+  }, []);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<TextInput>(null);
@@ -349,8 +389,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
   const [copiedCurrent, setCopiedCurrent] = useState(false);
   return (
-    <View style={{ alignSelf: "stretch", minWidth: compact ? 280 : 360 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+    <View style={{ alignSelf: "stretch", minWidth: compact ? 280 : 360, maxHeight: compact ? 380 : 480, display: "flex", flexDirection: "column" }}>
+      {/* 1. 固定头部：当前会话标题 + 复制 ID (Fixed Header) */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexShrink: 0 }}>
         <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 13, fontWeight: "700", flex: 1 }}>{currentTitle}</Text>
         {currentAgentId ? (
           <Pressable
@@ -367,39 +408,57 @@ function AgentsPopover(props: PluginButtonContentProps) {
           </Pressable>
         ) : null}
       </View>
-      <TextInput
-        ref={searchRef}
-        autoFocus
-        value={query}
-        onChangeText={setQuery}
-        placeholder="搜索 Agent / 工作区 / ID"
-        placeholderTextColor={props.theme.colors.foregroundMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        accessibilityLabel="搜索 Agent"
-        onLayout={() => {
-          if (searchFocused.current) return;
-          searchFocused.current = true;
-          searchRef.current?.focus();
-        }}
-        style={{ color: props.theme.colors.foreground, backgroundColor: props.theme.colors.surface1, borderColor: props.theme.colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, marginBottom: 10 }}
-      />
-      {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingBottom: 8 }}>{navigationError}</Text> : null}
-      <AgentActivity
-        theme={props.theme}
-        compact={compact}
-        currentServerId={props.host.id}
-        hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
-        query={query}
-        onSelectAgent={selectAgent}
-      />
+
+      {/* 2. 固定搜索栏 (Fixed Search Input) */}
+      <View style={{ marginBottom: 10, flexShrink: 0 }}>
+        <TextInput
+          ref={searchRef}
+          autoFocus
+          value={query}
+          onChangeText={setQuery}
+          placeholder="搜索 Agent / 工作区 / ID"
+          placeholderTextColor={props.theme.colors.foregroundMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="搜索 Agent"
+          onLayout={() => {
+            if (searchFocused.current) return;
+            searchFocused.current = true;
+            searchRef.current?.focus();
+          }}
+          style={{ color: props.theme.colors.foreground, backgroundColor: props.theme.colors.surface1, borderColor: props.theme.colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 }}
+        />
+      </View>
+      {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingBottom: 8, flexShrink: 0 }}>{navigationError}</Text> : null}
+
+      {/* 3. 独立滚动区：只滚动下方面板，隐藏滚动条 (Scrollable Panel without Scrollbars) */}
+      <View
+        className="paseo-no-scrollbar"
+        {...({
+          style: {
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }
+        } as any)}
+      >
+        <AgentActivity
+          theme={props.theme}
+          compact={compact}
+          currentServerId={props.host.id}
+          hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+          query={query}
+          onSelectAgent={selectAgent}
+        />
+      </View>
     </View>
   );
 }
 
-function formatSessionPill(title: string, state: { label: string; colorKind: PillColorKind }): string {
-  if (state.colorKind === "unknown" && state.label !== "读取中" && state.label !== "读取失败") return title;
-  return `${title} · ${state.label}`;
+function formatSessionPill(_title: string, state: { label: string; colorKind: PillColorKind }): string {
+  return state.label;
 }
 
 export function contributeAgentsPills(client: PluginClientContext) {
