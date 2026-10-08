@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Dimensions, Easing, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -757,6 +757,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
     }
   };
   const compact = props.layout.compact || props.layout.platform !== "web";
+  const windowHeight = Dimensions.get("window").height;
+  const listHeight = Math.min(520, Math.max(380, windowHeight - 260));
   const currentAgentId = "agentId" in props ? (props as any).agentId : "";
   const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
@@ -885,8 +887,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
           style={{
             flex: 1,
             minHeight: 0,
-            height: 285,
-            maxHeight: 295,
+            height: listHeight,
+            maxHeight: listHeight,
             touchAction: "pan-y" as any,
             WebkitOverflowScrolling: "touch" as any,
           }}
