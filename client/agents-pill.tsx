@@ -283,7 +283,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   };
   const section = (label: string, items: typeof all, color: string, breathing = false) => items.length === 0 ? null : (
     <View style={{ gap: 4 }}>
-      <Text style={{ color, fontSize: compact ? 13 : 14, fontWeight: "700" }}>{label} · {items.length}</Text>
+      <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map(({ agent, workspace }) => (
         <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 7 : 8 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
@@ -369,6 +369,26 @@ if (typeof document !== "undefined") {
   injectScrollbarStyles();
 }
 
+function SearchIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: string }) {
+  if (typeof document === "undefined") return null;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
 let activeAgentsPopoverCloser: (() => void) | null = null;
 
 function AgentsPopover(props: PluginButtonContentProps) {
@@ -377,6 +397,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
   }, []);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<TextInput>(null);
   const searchFocused = useRef(false);
 
@@ -429,14 +450,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
 
-    // 1. Set comfortable, compact card internal padding without clipping the input
+    // Reset parent wrapper padding so we have 100% exact pixel control of inner card margins
     const contentParent = el.parentElement;
     if (contentParent) {
-      contentParent.style.setProperty("padding", "10px 10px 8px 10px", "important");
+      contentParent.style.setProperty("padding", "0px", "important");
       contentParent.style.setProperty("gap", "0px", "important");
     }
 
-    // 2. Lock outer popover shell so outer panel never scrolls
+    // Lock outer popover shell so outer panel never scrolls
     let p = el.parentElement;
     while (p) {
       p.style.scrollbarWidth = "none";
@@ -455,44 +476,66 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 385,
-        maxHeight: 385,
+        height: 390,
+        maxHeight: 390,
         display: "flex",
         flexDirection: "column",
-        paddingHorizontal: 2,
-        paddingTop: 2,
+        paddingTop: 10,
+        paddingHorizontal: 10,
+        paddingBottom: 8,
         boxSizing: "border-box" as any,
         overflow: "hidden",
       }}
     >
-      {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls, comfortable safe margin) */}
-      <View style={{ flexShrink: 0, marginBottom: 7, paddingHorizontal: 1, paddingTop: 1 }}>
-        <TextInput
-          ref={searchRef}
-          autoFocus
-          value={query}
-          onChangeText={setQuery}
-          placeholder="搜索 Agent / 工作区 / ID"
-          placeholderTextColor={props.theme.colors.foregroundMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          accessibilityLabel="搜索 Agent"
-          onLayout={() => {
-            if (searchFocused.current) return;
-            searchFocused.current = true;
-            searchRef.current?.focus();
-          }}
+      {/* 🔍 1. 顶部固定搜索栏 (Refined Search Bar with Magnifying Glass & Balanced Margins) */}
+      <View style={{ flexShrink: 0, marginBottom: 10 }}>
+        <View
           style={{
-            color: props.theme.colors.foreground,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 7,
             backgroundColor: props.theme.colors.surface0 ?? "#1c1f24",
-            borderColor: props.theme.colors.border,
+            borderColor: isSearchFocused ? props.theme.colors.accent : props.theme.colors.border,
             borderWidth: 1,
             borderRadius: 7,
-            paddingHorizontal: 10,
-            paddingVertical: 7,
-            fontSize: 12,
+            paddingHorizontal: 9,
+            paddingVertical: 6,
           }}
-        />
+        >
+          <SearchIcon size={13} color={isSearchFocused ? props.theme.colors.accent : props.theme.colors.foregroundMuted} />
+          <TextInput
+            ref={searchRef}
+            autoFocus
+            value={query}
+            onChangeText={setQuery}
+            placeholder="搜索 Agent / 工作区 / ID"
+            placeholderTextColor={props.theme.colors.foregroundMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="搜索 Agent"
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            onLayout={() => {
+              if (searchFocused.current) return;
+              searchFocused.current = true;
+              searchRef.current?.focus();
+            }}
+            style={{
+              flex: 1,
+              color: props.theme.colors.foreground,
+              fontSize: 12,
+              padding: 0,
+              borderWidth: 0,
+              backgroundColor: "transparent",
+              outlineStyle: "none",
+            } as any}
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery("")} hitSlop={6} accessibilityLabel="清空搜索">
+              <Text style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", paddingHorizontal: 2 }}>✕</Text>
+            </Pressable>
+          ) : null}
+        </View>
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 4 }}>{navigationError}</Text> : null}
       </View>
 
@@ -500,8 +543,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         {...({ className: "paseo-agents-list-scroll" } as any)}
-        style={{ flex: 1, minHeight: 0, height: 295, maxHeight: 300, paddingHorizontal: 1 }}
-        contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+        style={{ flex: 1, minHeight: 0, height: 290, maxHeight: 300 }}
+        contentContainerStyle={{ gap: 8, paddingBottom: 6 }}
       >
         <AgentActivity
           theme={props.theme}
@@ -521,12 +564,12 @@ function AgentsPopover(props: PluginButtonContentProps) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          paddingTop: 7,
+          paddingTop: 8,
           paddingBottom: 2,
-          paddingHorizontal: 1,
+          paddingHorizontal: 2,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
-          marginTop: 4,
+          marginTop: 2,
         }}
       >
         <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", flex: 1 }}>
