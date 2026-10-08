@@ -60,18 +60,34 @@ export class PiManager {
     try { localExtensions = await readdir(join(dir, "extensions")); } catch { /* optional */ }
     return { version, revision, packages: packages.filter((entry): entry is NonNullable<typeof entry> => entry !== null), localExtensions };
   }
-  async change(input: { operation: "install" | "remove" | "update"; source: string; revision: string; confirmed: true }, signal?: AbortSignal) {
-    PiPackageSource.parse(input.source);
+  async change(input: { operation: "install" | "remove" | "update" | "update-pi"; source?: string; revision: string; confirmed: true }, signal?: AbortSignal) {
     if (input.confirmed !== true) throw new Error("需要确认操作");
     if (this.busy) throw new Error("目标设备已有插件操作正在执行，请稍后刷新");
     this.busy = true;
     try {
       const before = await this.inventory(signal);
       if (before.revision !== input.revision) throw new Error("Pi 配置已变更，请刷新后重新确认");
-      if (input.operation !== "install" && !before.packages.some((entry) => entry.source === input.source)) throw new Error("包已不在安装列表中，请刷新");
+
+      if (input.operation === "update-pi") {
+        const dir = this.directory();
+        try {
+          await this.run("pi", ["update", "pi"], {
+            cwd: dir, env: { ...process.env, PI_CODING_AGENT_DIR: dir },
+            timeout: 120_000, maxBuffer: 1_000_000, signal,
+          });
+        } catch {
+          signal?.throwIfAborted();
+          throw new Error("更新 Pi 失败，请检查网络或稍后重试");
+        }
+        return { inventory: await this.inventory(signal), notice: "Pi 已更新至最新版本。" };
+      }
+
+      const source = input.source ?? "";
+      PiPackageSource.parse(source);
+      if (input.operation !== "install" && !before.packages.some((entry) => entry.source === source)) throw new Error("包已不在安装列表中，请刷新");
       const dir = this.directory();
       try {
-        await this.run("pi", [input.operation, input.source, "--no-approve"], {
+        await this.run("pi", [input.operation, source, "--no-approve"], {
           cwd: dir, env: { ...process.env, PI_CODING_AGENT_DIR: dir },
           timeout: 90_000, maxBuffer: 1_000_000, signal,
         });

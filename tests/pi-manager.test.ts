@@ -35,5 +35,8 @@ test("Pi inventory is host-local, reports actual versions; changes require match
     await manager.change({ operation: "remove", source: "npm:foo@1.0.0", revision: inventory.revision, confirmed: true });
     assert.deepEqual(calls.find((call) => call.args[0] === "remove")?.args, ["remove", "npm:foo@1.0.0", "--no-approve"]);
     assert.ok(calls.every((call) => call.cwd === dir));
+
+    await manager.change({ operation: "update-pi", revision: inventory.revision, confirmed: true });
+    assert.deepEqual(calls.find((call) => call.args[0] === "update" && call.args[1] === "pi")?.args, ["update", "pi"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

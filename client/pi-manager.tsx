@@ -14,7 +14,7 @@ function HostPiManager({ host, theme }: PluginSurfaceProps) {
   const list = useRpc(piInventory), change = useRpc(piPackageChange);
   const inventory = useQuery({ queryKey: ["tietiezhi", "pi", host.id], queryFn: () => list({}), enabled: online, retry: false, gcTime: 0 });
   const [source, setSource] = useState("");
-  const [confirmation, setConfirmation] = useState<{ operation: "install" | "remove" | "update"; source: string; revision: string } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ operation: "install" | "remove" | "update" | "update-pi"; source: string; revision: string } | null>(null);
   const [notice, setNotice] = useState("");
   const mutation = useMutation({
     mutationFn: (selection: NonNullable<typeof confirmation>) => change({ ...selection, confirmed: true }),
@@ -22,7 +22,7 @@ function HostPiManager({ host, theme }: PluginSurfaceProps) {
     onError: () => { setConfirmation(null); void inventory.refetch(); },
   });
 
-  const choose = (operation: "install" | "remove" | "update", value: string) => {
+  const choose = (operation: "install" | "remove" | "update" | "update-pi", value: string) => {
     if (inventory.data) setConfirmation({ operation, source: value, revision: inventory.data.revision });
     setNotice("");
   };
@@ -33,9 +33,18 @@ function HostPiManager({ host, theme }: PluginSurfaceProps) {
     <View style={{ gap: 12 }}>
       {/* Top Action Bar */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-          Pi · {inventory.data?.version ?? "..."}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+            Pi · {inventory.data?.version ?? "..."}
+          </Text>
+          <Action
+            theme={theme}
+            title="更新 Pi"
+            label="更新 Pi"
+            disabled={disabled}
+            onPress={() => choose("update-pi", "pi")}
+          />
+        </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <TextInput
             accessibilityLabel="Pi 插件安装来源"
@@ -82,7 +91,9 @@ function HostPiManager({ host, theme }: PluginSurfaceProps) {
       {confirmation ? (
         <View style={{ padding: 12, gap: 8, borderRadius: 8, borderWidth: 1, borderColor: hexAlpha(theme.colors.accent, 0.4), backgroundColor: hexAlpha(theme.colors.accent, 0.05) }}>
           <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600" }}>
-            确认在 {host.label} 上{confirmation.operation === "install" ? "安装" : confirmation.operation === "remove" ? "卸载" : "更新"} {confirmation.source}？
+            {confirmation.operation === "update-pi"
+              ? `确认在 ${host.label} 上将 Pi 更新至最新版本？`
+              : `确认在 ${host.label} 上${confirmation.operation === "install" ? "安装" : confirmation.operation === "remove" ? "卸载" : "更新"} ${confirmation.source}？`}
           </Text>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
             <Action theme={theme} title={mutation.isPending ? "执行中…" : "确认操作"} disabled={disabled} onPress={() => mutation.mutate(confirmation)} />
@@ -139,9 +150,32 @@ function HostPiManager({ host, theme }: PluginSurfaceProps) {
 
       {/* Local Extensions Footer */}
       {inventory.data?.localExtensions?.length ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, paddingHorizontal: 2, marginTop: 4 }}>
-          本地扩展：{inventory.data.localExtensions.join("、")}
-        </Text>
+        <View style={{ gap: 4, marginTop: 4 }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, paddingHorizontal: 2 }}>
+            本地扩展（位于 ~/.pi/agent/extensions/ 目录）：
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {inventory.data.localExtensions.map((ext) => (
+              <View
+                key={ext}
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 4,
+                  backgroundColor: hexAlpha(theme.colors.foreground, 0.05),
+                }}
+              >
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+                  {ext === "model-list.ts"
+                    ? "model-list.ts（模型目录精简）"
+                    : ext === "subagent"
+                    ? "subagent（子智能体配置）"
+                    : ext}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
       ) : null}
     </View>
   );
