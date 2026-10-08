@@ -61,6 +61,44 @@ const GOOGLE_CLIENT_SECRET =
 const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 
+const XAI_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
+const XAI_TOKEN_URL = "https://auth.x.ai/oauth2/token";
+
+export async function refreshXaiToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
+  const agent = getProxyAgent();
+  const dispatcher = getDispatcher();
+  const execute = async (useProxy: boolean) => {
+    return await fetcher(XAI_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refresh,
+        client_id: XAI_CLIENT_ID,
+      }),
+      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
+      ...(useProxy && agent ? { agent } as any : {}),
+    });
+  };
+  try {
+    let response: Response;
+    try {
+      response = await execute(true);
+    } catch {
+      response = await execute(false);
+    }
+    if (!response.ok) return null;
+    const data = rec(await response.json());
+    const access = text(data.access_token);
+    const newRefresh = text(data.refresh_token) || refresh;
+    const expiresIn = num(data.expires_in) ?? 3600;
+    if (!access) return null;
+    return { access, refresh: newRefresh, expires: Date.now() + expiresIn * 1000 - 60_000 };
+  } catch {
+    return null;
+  }
+}
+
 export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
   const agent = getProxyAgent();
   const dispatcher = getDispatcher();
@@ -160,6 +198,17 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
     }
   }
 
+  // Auto-refresh expired xAI Grok OAuth token
+  if (family === "xai" && refreshToken && (!token || (expiresAt !== null && expiresAt <= Date.now() + 30_000))) {
+    const refreshed = await refreshXaiToken(refreshToken, fetcher);
+    if (refreshed) {
+      token = refreshed.access;
+      credential.access = refreshed.access;
+      credential.refresh = refreshed.refresh;
+      credential.expires = refreshed.expires;
+    }
+  }
+
   if (!token || token.startsWith("!")) throw new Error("此授权类型不支持额度查询");
 
   const request = async (url: string, init: RequestInit = {}) => {
@@ -215,6 +264,27 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
               Authorization: "Bearer " + token,
               Accept: "application/json",
               ...(text(credential.accountId) ? { "ChatGPT-Account-Id": text(credential.accountId) } : {}),
+              ...init.headers,
+            },
+            ...(dispatcher ? { dispatcher } : {}),
+            ...(agent ? { agent } : {}),
+          });
+        }
+      } else if (family === "xai" && refreshToken) {
+        const refreshed = await refreshXaiToken(refreshToken, fetcher);
+        if (refreshed) {
+          token = refreshed.access;
+          credential.access = refreshed.access;
+          credential.refresh = refreshed.refresh;
+          credential.expires = refreshed.expires;
+          response = await fetcher(url, {
+            ...init,
+            redirect: "error",
+            signal,
+            headers: {
+              Authorization: "Bearer " + token,
+              Accept: "application/json",
+              "X-XAI-Token-Auth": "xai-grok-cli",
               ...init.headers,
             },
             ...(dispatcher ? { dispatcher } : {}),
