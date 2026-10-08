@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, usePaseo, useRpc } from "@getpaseo/plugin/client";
+import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { dispatchWebAgentTarget, watchWebPopoverDismiss } from "./web.ts";
 
@@ -191,6 +191,34 @@ function watchLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: string, ho
 function useOwnedAgents(hostId: string, hostName: string) {
   const paseo = usePaseo();
   const rpc = useRpc(agentActivity);
+  const hosts = useHosts();
+  const queryClient = useQueryClient();
+  const connectedHosts = hosts.filter((host) => host.status === "online" && host.serverId !== hostId);
+  const hostSignature = JSON.stringify(connectedHosts.map((host) => [host.serverId, host.label]));
+  const connectedKey = [AGENT_ACTIVITY_QUERY_KEY, "connected", hostId, hostSignature];
+  const connected = useQuery({
+    queryKey: connectedKey,
+    queryFn: async () => {
+      const results = await Promise.allSettled(connectedHosts.map((host) =>
+        listLocalAgents(getPaseoClient(host.serverId), host.serverId, host.label),
+      ));
+      return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+    },
+    refetchInterval: 5_000,
+    staleTime: 2_000,
+    retry: 1,
+  });
+  useEffect(() => {
+    const releases: (() => void)[] = [];
+    for (const host of connectedHosts) {
+      try {
+        releases.push(getPaseoClient(host.serverId).agents.subscribe(() => {
+          void queryClient.invalidateQueries({ queryKey: connectedKey });
+        }));
+      } catch { /* A host can disconnect between discovery and subscription. */ }
+    }
+    return () => { for (const release of releases) release(); };
+  }, [hostSignature, hostId, queryClient]);
   useEffect(() => {
     watchLocalAgents(paseo, hostId, hostName);
   }, [paseo, hostId, hostName]);
@@ -208,7 +236,10 @@ function useOwnedAgents(hostId: string, hostName: string) {
     retry: 1,
   });
   return {
-    agents: combineOwnedAgents(local, remote.data?.agents ?? [], hostId),
+    agents: combineOwnedAgents(local, [
+      ...(connected.data ?? []),
+      ...(remote.data?.agents ?? []).filter((agent) => !hosts.some((host) => host.serverId === agent.serverId)),
+    ], hostId),
     isPending: local.length === 0 && !remote.data && remote.isPending,
     isError: remote.isError,
   };
@@ -283,9 +314,9 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     setArchivingId(agent.id);
     setReloadNote(null);
     const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
-    const request = local
+    const request = Promise.resolve().then(() => local
       ? paseo.agents.ref(agent.id).archive()
-      : archiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
+      : getPaseoClient(agent.serverId || agent.hostId).agents.ref(agent.id).archive());
     void Promise.resolve(request).then(() => {
       const existing = localAgentMap.get(agent.id);
       if (existing) {

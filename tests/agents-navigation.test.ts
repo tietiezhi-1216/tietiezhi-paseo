@@ -34,6 +34,15 @@ test("native URL routing uses workspace route", () => {
   assert.deepEqual(calls, [`paseo://${buildAgentWorkspaceRoute(agent.serverId, agent.workspaceId, agent.id)!.slice(1)}`]);
 });
 
+test("cross-host navigation uses native navigation with the target serverId", () => {
+  const calls: unknown[] = [];
+  prepareAgentNavigation({ serverId: "srv_remote", workspaceId: null, id: "remote-agent" }, {
+    platform: "ios", currentServerId: "srv_current",
+    navigation: { openAgent: (input) => calls.push(input) },
+  })();
+  assert.deepEqual(calls, [{ agentId: "remote-agent", serverId: "srv_remote" }]);
+});
+
 test("reload host prefers host id, then live server id", () => {
   const hosts = [
     { id: "jili", serverId: "srv_81" },
@@ -114,4 +123,6 @@ test("owned device agents win over borrowed snapshots", () => {
   assert.equal(combined[0].status, "running");
   assert.equal(combined[0].attentionReason, null);
   assert.equal(combined[1].id, "agent-b");
+  const sameIdOtherHost = { ...other, id: local.id };
+  assert.equal(combineOwnedAgents([local], [sameIdOtherHost, sameIdOtherHost], "srv80").length, 2);
 });

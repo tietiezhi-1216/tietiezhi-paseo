@@ -96,7 +96,7 @@ export type AgentNavigationTarget = { serverId: string; workspaceId: string; age
 export type AgentNavigationEnvironment = {
   platform: "ios" | "android" | "web";
   currentServerId: string;
-  navigation?: { openAgent(input: { agentId: string }): void };
+  navigation?: { openAgent(input: { agentId: string; serverId?: string }): void };
   dispatchWebTarget?: (target: AgentNavigationTarget) => boolean;
   nativeLinking?: {
     emit(event: string, payload: { url: string }): void;
@@ -112,8 +112,10 @@ export function prepareAgentNavigation(
   const agentId = agent.id.trim();
   if (!serverId || !agentId) throw new Error("缺少 Agent 的主机信息，请刷新列表后重试。");
   const navigation = environment.navigation;
-  if (navigation && serverId === environment.currentServerId) {
-    return () => navigation.openAgent({ agentId });
+  if (navigation) {
+    return () => navigation.openAgent(serverId === environment.currentServerId
+      ? { agentId }
+      : { agentId, serverId });
   }
   const workspaceId = agent.workspaceId?.trim();
   if (environment.platform === "web") {
@@ -221,10 +223,15 @@ export function agentActivityAt(agent: { lastUserMessageAt?: string | null; crea
 
 export function combineOwnedAgents(owned: RemoteAgent[], borrowed: RemoteAgent[], currentServerId?: string | null): RemoteAgent[] {
   const ownedListed = owned.filter((agent) => isDisplayableAgent(agent));
-  const ownedIds = new Set(ownedListed.map((agent) => agent.id));
+  const key = (agent: RemoteAgent) => JSON.stringify([agent.serverId ?? agent.hostId, agent.id]);
+  const seen = new Set(ownedListed.map(key));
   return [
     ...ownedListed,
-    ...borrowed.filter((agent) => isDisplayableAgent(agent) && !ownedIds.has(agent.id) && !isAgentOnServer(agent, currentServerId)),
+    ...borrowed.filter((agent) => {
+      if (!isDisplayableAgent(agent) || isAgentOnServer(agent, currentServerId) || seen.has(key(agent))) return false;
+      seen.add(key(agent));
+      return true;
+    }),
   ];
 }
 

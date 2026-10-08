@@ -200,6 +200,9 @@ export async function reloadRemoteAgent(input: { hostId?: string; serverId?: str
   }
   const daemon = await getLocalDaemonClient();
   try {
+    if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
+      throw new Error("目标是远程设备，尚未配置该设备的重载通道；不会回退到本机。");
+    }
     await daemon.refreshAgent(input.agentId);
   } finally {
     await daemon.close().catch(() => {});
@@ -230,6 +233,9 @@ export async function unarchiveRemoteAgent(input: { hostId?: string; serverId?: 
   } else {
     const daemon = await getLocalDaemonClient();
     try {
+      if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
+        throw new Error("目标是远程设备，尚未配置该设备的恢复通道；不会回退到本机。");
+      }
       await daemon.refreshAgent(input.agentId);
     } finally {
       await daemon.close().catch(() => {});

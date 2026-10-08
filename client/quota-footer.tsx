@@ -187,7 +187,10 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ width: "100%", minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 34, paddingHorizontal: dense ? 6 : 10, paddingVertical: 4, borderRadius: 6, gap: dense ? 4 : 8 }}>
       <Pressable testID="quota-footer-trigger" accessibilityRole="button" accessibilityLabel={label}
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          setOpen(true);
+          void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id, footerFamily] });
+        }}
         style={{ flex: 1, minWidth: 0, minHeight: 30, flexDirection: "row", alignItems: "center", gap: 6 }}>
         <VendorMark family={footerFamily} size={15} />
         <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1} pointerEvents="none"
