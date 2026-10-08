@@ -8,6 +8,7 @@ import { type QuotaSnapshot, getQuota, selectQuotaWindow } from "../shared/quota
 import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
+import { persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
 
 function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claude" } | null {
   const text = raw.toLowerCase().trim();
@@ -111,10 +112,6 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
 
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const quota = useQuota(host.id, footerFamily, null, true);
-  // Warm cache for all channels in background so opening any tab in the dialog is 100% instant
-  useQuota(host.id, "codex", null, true);
-  useQuota(host.id, "antigravity", null, true);
-  useQuota(host.id, "xai", null, true);
   const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const refresh = useMutation({
@@ -123,6 +120,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
       return rpc({ family: selected, refresh: true });
     },
     onSuccess(result, selected) {
+      updatePersistentQuotas(result.quotas);
       queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, (old: any) => {
         if (!old) return result;
         const newQuotas = Array.isArray(old.quotas) ? [...old.quotas] : [];
@@ -140,15 +138,24 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
     const timer = setInterval(() => setTick((tick) => tick + 1), 1000);
     return () => clearInterval(timer);
   }, []);
-  const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, false]);
-  const q = data?.quotas.find((a: any) => a.accountId === data.currentAccountId) ?? data?.quotas[0];
+
+  if (quota.data?.quotas) {
+    updatePersistentQuotas(quota.data.quotas);
+  }
+
+  const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, true]);
+  const q = data?.quotas.find((a: any) => a.accountId === data.currentAccountId)
+    ?? (data?.currentAccountId ? persistentQuotaStore[data.currentAccountId] : undefined)
+    ?? Object.values(persistentQuotaStore).find(item => item.windows.some(w => footerFamily === "antigravity" ? (w.pool === "gemini" || w.pool === "claude") : w.pool === "shared"))
+    ?? data?.quotas[0];
 
   const stale = !online || quota.isError || q?.stale || (refresh.variables === footerFamily && refresh.isError);
   const label = quotaFooterLabel(footerFamily, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
   const windows = q?.windows ?? [];
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
-  const meters = [{ name: "", window: selectQuotaWindow(footerFamily, activePool, windows) }];
-  const time = meters[0]?.window ? naturalCountdown(meters[0].window.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
+  const activeWindow = selectQuotaWindow(footerFamily, activePool, windows);
+  const meters = [{ name: "", window: activeWindow }];
+  const time = activeWindow ? naturalCountdown(activeWindow.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ width: "100%", minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 34, paddingHorizontal: dense ? 6 : 10, paddingVertical: 4, borderRadius: 6, gap: dense ? 4 : 8 }}>

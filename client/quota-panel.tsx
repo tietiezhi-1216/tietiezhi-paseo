@@ -11,34 +11,11 @@ import { AccountsPanel } from "./accounts.tsx";
 import { Action, ChannelTabs, Notice, QuotaMeter, RemainingBar, hexAlpha } from "./ui.tsx";
 import { quotaFailureLabel, compactDateTime } from "../shared/ui-format.ts";
 import { LoginPanel } from "./login.tsx";
+import { persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
 
 const CHANNEL_TABS = [
   ["codex", "Codex", "codex"], ["xai", "Grok", "xai"], ["antigravity", "Antigravity", "antigravity"],
 ] as const;
-
-const persistentQuotaStore: Record<string, AccountQuota> = (() => {
-  try {
-    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v3") || "{}");
-  } catch {
-    return {};
-  }
-})();
-
-function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined) {
-  if (!quotas || !quotas.length) return;
-  let changed = false;
-  for (const q of quotas) {
-    if (q && q.accountId && q.windows.length > 0) {
-      persistentQuotaStore[q.accountId] = { ...q, error: null };
-      changed = true;
-    }
-  }
-  if (changed) {
-    try {
-      localStorage.setItem("tietiezhi.quotas.cache.v3", JSON.stringify(persistentQuotaStore));
-    } catch {}
-  }
-}
 
 export function useQuota(hostId: string, family: Family | null, slot: string | null, all = false, enabled = true) {
   const rpc = useRpc(getQuota);
