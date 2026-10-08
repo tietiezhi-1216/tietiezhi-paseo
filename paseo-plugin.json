@@ -3,5 +3,5 @@
   "requirements": {
     "paseo": ">=0.11.0-beta.4"
   },
-  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]]
+  "build": [["npm", "ci", "--ignore-scripts"]]
 }
