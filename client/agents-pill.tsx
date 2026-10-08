@@ -4,7 +4,7 @@ import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginC
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
-import { dispatchWebAgentTarget, watchWebPopoverDismiss } from "./web.ts";
+import { dispatchWebAgentTarget } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
 type PillColorKind = "success" | "failure" | "running" | "unknown";
@@ -413,7 +413,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     <View style={{ gap: 4 }}>
       <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map(({ agent, workspace }) => (
-        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10 }}>
+        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
             <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
               <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
@@ -692,8 +692,6 @@ function SearchIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: s
   );
 }
 
-let activeAgentsPopoverCloser: (() => void) | null = null;
-
 function AgentsPopover(props: PluginButtonContentProps) {
   useEffect(() => {
     injectScrollbarStyles();
@@ -706,25 +704,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const searchFocused = useRef(false);
 
   useEffect(() => {
-    if (activeAgentsPopoverCloser && activeAgentsPopoverCloser !== props.close) {
-      try { activeAgentsPopoverCloser(); } catch { /* ignore */ }
-    }
-    activeAgentsPopoverCloser = props.close;
-    return () => {
-      if (activeAgentsPopoverCloser === props.close) {
-        activeAgentsPopoverCloser = null;
-      }
-    };
-  }, [props.close]);
-
-  useEffect(() => {
-    if (props.layout.platform !== "web") return;
-    return watchWebPopoverDismiss(props.close);
-  }, [props.close, props.layout.platform]);
-  useEffect(() => {
     let alive = true;
     const focus = () => { if (alive) searchRef.current?.focus(); };
-    const timers = [0, 50, 120, 280].map((ms) => setTimeout(focus, ms));
+    const timers = [50, 150].map((ms) => setTimeout(focus, ms));
     return () => { alive = false; for (const timer of timers) clearTimeout(timer); };
   }, []);
   const unarchiveRpc = useRpc(agentUnarchive);
