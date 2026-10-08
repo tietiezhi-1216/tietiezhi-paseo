@@ -37,8 +37,8 @@ export function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefin
   if (!quotas || !quotas.length) return;
   let changed = false;
   for (const q of quotas) {
-    if (q && q.accountId && q.windows.length > 0) {
-      persistentQuotaStore[q.accountId] = { ...q, error: null };
+    if (q && q.accountId) {
+      persistentQuotaStore[q.accountId] = { ...q };
       changed = true;
     }
   }

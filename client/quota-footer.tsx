@@ -170,12 +170,13 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const windows = q?.windows ?? [];
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
   const activeWindow = selectQuotaWindow(footerFamily, activePool, windows);
-  const isAuthError = Boolean(q?.error && /授权已失效|401|登录/.test(q.error));
+  const isAuthError = Boolean(q?.error && /授权已失效|401|登录|invalid_grant|unauthorized/i.test(q.error));
+  const isExpired = Boolean(activeWindow && activeWindow.resetAt != null && activeWindow.resetAt <= Date.now());
   const meters = [{ name: "", window: isAuthError ? null : activeWindow }];
   const time = isAuthError
     ? "需登录"
     : activeWindow
-      ? (activeWindow.resetAt != null && activeWindow.resetAt <= Date.now() ? "已重置" : naturalCountdown(activeWindow.resetAt, Date.now()))
+      ? (isExpired ? "已重置" : naturalCountdown(activeWindow.resetAt, Date.now()))
       : quota.isFetching
         ? "读取中…"
         : "—";
