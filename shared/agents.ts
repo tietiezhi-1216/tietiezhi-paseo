@@ -268,6 +268,9 @@ export const agentReload = defineRpc({
     hostId: z.string().default(""),
     serverId: z.string().nullable().optional(),
     agentId: z.string().min(1),
+    password: z.string().optional(),
+    target: z.string().optional(),
+    savePassword: z.boolean().optional(),
   }),
   output: z.object({
     agentId: z.string(),
