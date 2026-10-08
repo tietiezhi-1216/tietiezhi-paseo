@@ -282,13 +282,13 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     }).catch(() => {});
   };
   const section = (label: string, items: typeof all, color: string, breathing = false) => items.length === 0 ? null : (
-    <View style={{ gap: 5 }}>
-      <Text style={{ color, fontSize: compact ? 14 : 15, fontWeight: "800" }}>{label} · {items.length}</Text>
+    <View style={{ gap: 4 }}>
+      <Text style={{ color, fontSize: compact ? 13 : 14, fontWeight: "700" }}>{label} · {items.length}</Text>
       {items.map(({ agent, workspace }) => (
-        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 8 : 10, paddingHorizontal: compact ? 8 : 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Animated.View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
+        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 7 : 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
               {workspace ? <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foregroundMuted, fontSize: 11 }}>{workspace}</Text> : null}
               {workspace ? <Text style={{ color: theme.colors.border, fontSize: 11 }}>/</Text> : null}
               <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}>{agent.name || agent.id}</Text>
@@ -306,7 +306,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     </View>
   );
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 8 }}>
       {reloadNote ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{reloadNote}</Text> : null}
       {owned.isPending && owned.agents.length === 0 ? <ActivityIndicator color={theme.colors.accent} /> : all.length === 0 ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{query.trim() ? "没有匹配的 Agent" : "No agents"}</Text> : (
         <>
@@ -329,7 +329,14 @@ const HIDE_SCROLLBAR_CSS = `
   overflow-y: hidden !important;
 }
 
-/* 2. Completely eliminate all WebKit and Firefox scrollbars */
+/* 2. Tighten card internal padding for modern compact aesthetic */
+[data-menu-surface="true"] [style*="padding: 12px"],
+[data-menu-surface="true"] [style*="padding: 16px"] {
+  padding: 6px 8px !important;
+  gap: 0px !important;
+}
+
+/* 3. Completely eliminate all WebKit and Firefox scrollbars */
 ::-webkit-scrollbar,
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -348,7 +355,7 @@ const HIDE_SCROLLBAR_CSS = `
   -ms-overflow-style: none !important;
 }
 
-/* 3. Re-enable scrolling ONLY on the middle agent list */
+/* 4. Re-enable scrolling ONLY on the middle agent list */
 .paseo-agents-list-scroll,
 .paseo-agents-list-scroll > div {
   overflow-y: auto !important;
@@ -428,6 +435,20 @@ function AgentsPopover(props: PluginButtonContentProps) {
     injectScrollbarStyles();
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
+
+    // 1. Tighten card internal padding from Paseo wrapper
+    const contentParent = el.parentElement;
+    if (contentParent) {
+      contentParent.style.setProperty("padding", "6px 8px", "important");
+      contentParent.style.setProperty("gap", "0px", "important");
+      const menuPage = contentParent.parentElement;
+      if (menuPage) {
+        menuPage.style.setProperty("padding-top", "0px", "important");
+        menuPage.style.setProperty("padding-bottom", "0px", "important");
+      }
+    }
+
+    // 2. Lock outer popover shell so outer panel never scrolls
     let p = el.parentElement;
     while (p) {
       p.style.scrollbarWidth = "none";
@@ -446,18 +467,18 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 390,
-        maxHeight: 390,
+        height: 380,
+        maxHeight: 380,
         display: "flex",
         flexDirection: "column",
-        paddingHorizontal: 4,
-        paddingTop: 2,
+        paddingHorizontal: 0,
+        paddingTop: 0,
         boxSizing: "border-box" as any,
         overflow: "hidden",
       }}
     >
       {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls) */}
-      <View style={{ flexShrink: 0, marginBottom: 8 }}>
+      <View style={{ flexShrink: 0, marginBottom: 6 }}>
         <TextInput
           ref={searchRef}
           autoFocus
@@ -478,21 +499,21 @@ function AgentsPopover(props: PluginButtonContentProps) {
             backgroundColor: props.theme.colors.surface0 ?? "#1c1f24",
             borderColor: props.theme.colors.border,
             borderWidth: 1,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
+            borderRadius: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 6,
             fontSize: 12,
           }}
         />
-        {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 6 }}>{navigationError}</Text> : null}
+        {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 4 }}>{navigationError}</Text> : null}
       </View>
 
       {/* 📜 2. 中间独立滚动区：Agent 列表 (ONLY the list in the middle scrolls) */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         {...({ className: "paseo-agents-list-scroll" } as any)}
-        style={{ flex: 1, minHeight: 0, height: 300, maxHeight: 310 }}
-        contentContainerStyle={{ gap: 10, paddingBottom: 6 }}
+        style={{ flex: 1, minHeight: 0, height: 295, maxHeight: 300 }}
+        contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
       >
         <AgentActivity
           theme={props.theme}
@@ -512,14 +533,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          paddingTop: 8,
+          paddingTop: 6,
           paddingBottom: 2,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
           marginTop: 4,
         }}
       >
-        <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600", flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", flex: 1 }}>
           当前 · {currentTitle}
         </Text>
         {currentAgentId ? (
@@ -533,9 +554,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
               }).catch(() => {});
             }}
             style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              borderRadius: 5,
+              paddingHorizontal: 7,
+              paddingVertical: 2.5,
+              borderRadius: 4,
               backgroundColor: props.theme.colors.surface0 ?? "rgba(255,255,255,0.06)",
             }}
           >
