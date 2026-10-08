@@ -285,7 +285,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     <View style={{ gap: 4 }}>
       <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map(({ agent, workspace }) => (
-        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 9 }}>
+        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 9 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
             <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
               <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
@@ -336,7 +336,15 @@ div[aria-label="当前会话与 Agents"] {
   overflow-y: hidden !important;
 }
 
-/* 3. Completely eliminate all WebKit and Firefox scrollbars */
+/* 3. Ensure popover wrappers have 0 bottom padding so footer is completely flush at bottom */
+[data-menu-surface="true"] > div,
+[data-menu-surface="true"] > div > div,
+[data-menu-surface="true"] > div > div > div,
+[data-menu-surface="true"] > div > div > div > div {
+  padding-bottom: 0px !important;
+}
+
+/* 4. Completely eliminate all WebKit and Firefox scrollbars */
 ::-webkit-scrollbar,
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -355,7 +363,7 @@ div[aria-label="当前会话与 Agents"] {
   -ms-overflow-style: none !important;
 }
 
-/* 4. Re-enable scrolling ONLY on the middle agent list */
+/* 5. Re-enable scrolling ONLY on the middle agent list */
 .paseo-agents-list-scroll,
 .paseo-agents-list-scroll > div {
   overflow-y: auto !important;
@@ -459,11 +467,16 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
 
-    // Reset parent wrapper padding so we have 100% exact pixel control of inner card margins
-    const contentParent = el.parentElement;
-    if (contentParent) {
-      contentParent.style.setProperty("padding", "0px", "important");
-      contentParent.style.setProperty("gap", "0px", "important");
+    // Reset parent wrapper padding so popover fills the surface completely and footer is flush
+    let curr = el.parentElement;
+    while (curr && curr.getAttribute("data-menu-surface") !== "true") {
+      curr.style.setProperty("padding", "0px", "important");
+      curr.style.setProperty("padding-top", "0px", "important");
+      curr.style.setProperty("padding-bottom", "0px", "important");
+      curr.style.setProperty("padding-left", "0px", "important");
+      curr.style.setProperty("padding-right", "0px", "important");
+      curr.style.setProperty("gap", "0px", "important");
+      curr = curr.parentElement;
     }
 
     // Lock outer popover shell so outer panel never scrolls
@@ -485,11 +498,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 395,
-        maxHeight: 395,
         display: "flex",
         flexDirection: "column",
-        backgroundColor: props.theme.colors.surface0,
+        backgroundColor: props.theme.colors.surface1,
         boxSizing: "border-box" as any,
         overflow: "hidden",
       }}
@@ -563,15 +574,15 @@ function AgentsPopover(props: PluginButtonContentProps) {
         style={{
           flex: 1,
           minHeight: 0,
-          height: 290,
-          maxHeight: 300,
-          backgroundColor: props.theme.colors.surface0,
+          height: 285,
+          maxHeight: 295,
+          backgroundColor: props.theme.colors.surface1,
         }}
         contentContainerStyle={{
           paddingHorizontal: 10,
           paddingTop: 9,
           paddingBottom: 9,
-          gap: 9,
+          gap: 8,
         }}
       >
         <AgentActivity
@@ -584,7 +595,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
         />
       </ScrollView>
 
-      {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock - NEVER scrolls) */}
+      {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock - Flush at bottom) */}
       <View
         style={{
           flexShrink: 0,
@@ -595,8 +606,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
           backgroundColor: props.theme.colors.surface1,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
-          paddingHorizontal: 11,
-          paddingVertical: 7,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
         }}
       >
         <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", flex: 1 }}>
@@ -614,11 +625,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
             }}
             style={{
               paddingHorizontal: 8,
-              paddingVertical: 2.5,
+              paddingVertical: 3,
               borderRadius: 4,
               borderWidth: 1,
               borderColor: props.theme.colors.border,
-              backgroundColor: props.theme.colors.surface0 ?? "rgba(255,255,255,0.06)",
+              backgroundColor: props.theme.colors.surface2,
             }}
           >
             <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foreground, fontSize: 11, fontWeight: "600" }}>
