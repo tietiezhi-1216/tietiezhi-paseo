@@ -150,6 +150,18 @@ export class AccountService {
     for (const source of legacy) addSaved(source.value, false);
     addSaved(archive.value, true);
     for (const [slot, value] of Object.entries(auth.value)) add(slot, record(value), {}, true);
+    // Ensure active live base slots always take highest precedence over old stale aliases
+    for (const [family, baseSlot] of Object.entries(LIVE_SLOTS)) {
+      const liveCred = record(auth.value[baseSlot]);
+      if (Object.keys(liveCred).length) {
+        const id = identity(family as Family, liveCred);
+        const target = accounts.get(id);
+        if (target) {
+          target.credential = liveCred;
+          target.slot = baseSlot;
+        }
+      }
+    }
     const active = new Set<string>();
     for (const [family, slot] of Object.entries(LIVE_SLOTS)) {
       const credential = record(auth.value[slot]);

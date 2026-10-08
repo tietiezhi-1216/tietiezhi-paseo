@@ -102,24 +102,14 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
           />
           {!props.layout.compact ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, fontWeight: "500" }}>{rows.length} 个账号</Text> : null}
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Action
-            theme={theme}
-            title={quota.isFetching || refreshMutation.isPending ? "刷新中…" : "刷新"}
-            label="刷新额度"
-            testID="quota-panel-refresh"
-            disabled={!online || quota.isFetching || refreshMutation.isPending}
-            onPress={() => refreshMutation.mutate(family)}
-          />
-          <Action
-            theme={theme}
-            title="+ 登录"
-            label="登录"
-            testID="quota-login"
-            disabled={!online || loginOpen}
-            onPress={() => setLoginOpen(true)}
-          />
-        </View>
+        <Action
+          theme={theme}
+          title="+ 登录"
+          label="登录"
+          testID="quota-login"
+          disabled={!online || loginOpen}
+          onPress={() => setLoginOpen(true)}
+        />
       </View>
 
       {!online ? <Notice theme={theme} text="离线 · 缓存" /> : null}
@@ -278,7 +268,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
               )}
               {window.resetAt ? (
                 <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
-                  {compactDateTime(window.resetAt)} 重置 ({window.resetAt <= Date.now() ? "已重置" : timeUntilReset(window.resetAt, Date.now())})
+                  {compactDateTime(window.resetAt)} 重置 ({window.resetAt <= Date.now() ? "本期生效" : timeUntilReset(window.resetAt, Date.now())})
                 </Text>
               ) : null}
             </View>

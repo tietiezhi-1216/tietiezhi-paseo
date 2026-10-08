@@ -176,7 +176,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const time = isAuthError
     ? "需登录"
     : activeWindow
-      ? (isExpired ? "已重置" : naturalCountdown(activeWindow.resetAt, Date.now()))
+      ? (isExpired ? "本期生效" : naturalCountdown(activeWindow.resetAt, Date.now()))
       : quota.isFetching
         ? "读取中…"
         : "—";
