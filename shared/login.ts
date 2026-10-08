@@ -1,6 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
-export const LoginFamilySchema = z.enum(["codex", "xai"]);
+export const LoginFamilySchema = z.enum(["codex", "xai", "antigravity"]);
 export const LoginStateSchema = z.object({
   id: z.string().uuid(),
   family: LoginFamilySchema,

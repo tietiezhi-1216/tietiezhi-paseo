@@ -181,6 +181,7 @@ function ManagerBody(props: PluginScreenProps) {
               key={`${host.id}:${login}`}
               {...props}
               family={login}
+              autoStart={true}
               onClose={() => setLogin(null)}
             />
           ) : null}
