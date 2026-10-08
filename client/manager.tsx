@@ -144,30 +144,6 @@ function ManagerBody(props: PluginScreenProps) {
               ))}
             </View>
           ) : null}
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 5,
-              backgroundColor: hexAlpha(theme.colors.foreground, 0.04),
-            }}
-          >
-            <View
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: online ? theme.colors.statusSuccess : theme.colors.foregroundMuted,
-              }}
-            />
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-              {host.label}
-            </Text>
-          </View>
         </View>
       </View>
 
