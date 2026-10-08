@@ -436,26 +436,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
         boxSizing: "border-box" as any,
       }}
     >
-      {/* 🔒 1. 顶部绝对固定区：标题 + 复制 ID + 搜索输入框 (Completely outside ScrollView, NEVER scrolls) */}
-      <View style={{ flexShrink: 0, paddingBottom: 6 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-          <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 13, fontWeight: "700", flex: 1 }}>{currentTitle}</Text>
-          {currentAgentId ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="复制当前 Agent ID"
-              onPress={() => {
-                void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
-                  setCopiedCurrent(true);
-                  setTimeout(() => setCopiedCurrent(false), 1500);
-                }).catch(() => {});
-              }}
-            >
-              <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "700" }}>{copiedCurrent ? "已复制" : "复制 ID"}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
+      {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls) */}
+      <View style={{ flexShrink: 0, marginBottom: 8 }}>
         <TextInput
           ref={searchRef}
           autoFocus
@@ -485,7 +467,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 6 }}>{navigationError}</Text> : null}
       </View>
 
-      {/* 📜 2. 独立滚动区：只滚动下方面板，隐藏滚动条 (ONLY the list below scrolls) */}
+      {/* 📜 2. 中间独立滚动区：Agent 列表 (ONLY the list in the middle scrolls) */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         {...({ className: "paseo-agents-scroll" } as any)}
@@ -501,6 +483,48 @@ function AgentsPopover(props: PluginButtonContentProps) {
           onSelectAgent={selectAgent}
         />
       </ScrollView>
+
+      {/* 🔒 3. 底部固定底栏：当前会话信息 + 复制 ID (Fixed Footer at Bottom, NEVER scrolls) */}
+      <View
+        style={{
+          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          paddingTop: 8,
+          paddingBottom: 2,
+          borderTopWidth: 1,
+          borderTopColor: props.theme.colors.border,
+          marginTop: 2,
+        }}
+      >
+        <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600", flex: 1 }}>
+          当前 · {currentTitle}
+        </Text>
+        {currentAgentId ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="复制当前 Agent ID"
+            onPress={() => {
+              void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
+                setCopiedCurrent(true);
+                setTimeout(() => setCopiedCurrent(false), 1500);
+              }).catch(() => {});
+            }}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 5,
+              backgroundColor: props.theme.colors.surface0 ?? "rgba(255,255,255,0.06)",
+            }}
+          >
+            <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foreground, fontSize: 11, fontWeight: "600" }}>
+              {copiedCurrent ? "已复制" : "复制 ID"}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
