@@ -252,9 +252,9 @@ export function legacyQuotaWindows(value: unknown): QuotaWindow[] {
   }
   for (const raw of (Array.isArray(usage.windows) ? usage.windows : []).slice(0, 100)) {
     const w = rec(raw), label = text(w.label);
-    const pool = /gemini/i.test(label) ? "gemini" : /claude|gpt|anthropic/i.test(label) ? "claude" : "shared";
-    // Generic legacy Antigravity windows are excluded by the service, as their pool isn't identifiable.
-    const normalized = normalizeWindow(`legacy-${windows.length}`, label, w.usedPercent, w.resetAt, pool);
+    const existingPool = w.pool === "gemini" || w.pool === "claude" ? (w.pool as "gemini" | "claude") : null;
+    const pool = existingPool ?? (/gemini/i.test(label) ? "gemini" : /claude|gpt|anthropic/i.test(label) ? "claude" : "shared");
+    const normalized = normalizeWindow(text(w.id) || `legacy-${windows.length}`, label, w.usedPercent, w.resetAt, pool);
     if (normalized) windows.push(normalized);
   }
   return windows.slice(0, 100);

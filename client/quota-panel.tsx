@@ -65,7 +65,7 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
     ?? data?.snapshot.accounts.filter((account) => account.family === family)
     ?? [];
   if (data?.quotas) {
-    updatePersistentQuotas(data.quotas);
+    updatePersistentQuotas(data.quotas, family, data.currentAccountId);
   }
   const quotaFor = (account: Account): AccountQuota | undefined => {
     const live = data?.quotas.find((item) => item.accountId === account.id);
