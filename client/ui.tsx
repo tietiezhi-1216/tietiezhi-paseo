@@ -38,18 +38,40 @@ export function RemainingBar({ used, theme, size = 16, remaining = true, strokeW
   const amount = value ?? 0;
   const label = `${remaining ? "剩余额度" : "已用额度"} ${value === null ? "未知" : `${Math.round(amount)}%`}`;
   if (RNPlatform.OS === "web") {
-    const inner = Math.max(0, (1 - stroke / (px / 2)) * 100);
-    const mask = `radial-gradient(farthest-side, transparent ${inner}%, #000 calc(${inner}% + 0.6px))`;
-    return <View accessibilityLabel={label} style={{
-      width: px,
-      height: px,
-      borderRadius: px / 2,
-      ...({
-        backgroundImage: `conic-gradient(from 0deg, ${color} ${amount}%, ${track} 0)`,
-        WebkitMaskImage: mask,
-        maskImage: mask,
-      } as Record<string, string>),
-    }} />;
+    const center = px / 2;
+    const radius = Math.max(0, (px - stroke) / 2);
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - amount / 100);
+    return (
+      <View accessibilityLabel={label} style={{ width: px, height: px, alignItems: "center", justifyContent: "center" }}>
+        <svg
+          width={px}
+          height={px}
+          viewBox={`0 0 ${px} ${px}`}
+          style={{ width: px, height: px, transform: "rotate(-90deg)", overflow: "visible", display: "block" }}
+        >
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={track}
+            strokeWidth={stroke}
+          />
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
+        </svg>
+      </View>
+    );
   }
   const segments = 90;
   return <View accessibilityLabel={label} style={{ width: px, height: px }}>
