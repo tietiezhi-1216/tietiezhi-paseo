@@ -321,7 +321,14 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
 }
 
 const HIDE_SCROLLBAR_CSS = `
-/* 1. Lock outer popover shell so the outer panel NEVER scrolls */
+/* 1. Expand composer pill max-width so Agent title and status fit without truncation */
+[aria-label="当前会话与 Agents"],
+button[aria-label="当前会话与 Agents"],
+div[aria-label="当前会话与 Agents"] {
+  max-width: 280px !important;
+}
+
+/* 2. Lock outer popover shell so the outer panel NEVER scrolls */
 [data-menu-surface="true"],
 [data-menu-surface="true"] > div,
 [data-menu-surface="true"] > div > div {
@@ -329,7 +336,7 @@ const HIDE_SCROLLBAR_CSS = `
   overflow-y: hidden !important;
 }
 
-/* 2. Completely eliminate all WebKit and Firefox scrollbars */
+/* 3. Completely eliminate all WebKit and Firefox scrollbars */
 ::-webkit-scrollbar,
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -348,7 +355,7 @@ const HIDE_SCROLLBAR_CSS = `
   -ms-overflow-style: none !important;
 }
 
-/* 3. Re-enable scrolling ONLY on the middle agent list */
+/* 4. Re-enable scrolling ONLY on the middle agent list */
 .paseo-agents-list-scroll,
 .paseo-agents-list-scroll > div {
   overflow-y: auto !important;
@@ -358,11 +365,13 @@ const HIDE_SCROLLBAR_CSS = `
 function injectScrollbarStyles() {
   if (typeof document === "undefined") return;
   const id = "paseo-agents-scrollbar-style";
-  if (document.getElementById(id)) return;
-  const style = document.createElement("style");
-  style.id = id;
+  let style = document.getElementById(id) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = id;
+    document.head?.appendChild(style);
+  }
   style.textContent = HIDE_SCROLLBAR_CSS;
-  document.head?.appendChild(style);
 }
 
 if (typeof document !== "undefined") {
@@ -629,6 +638,7 @@ function formatSessionPill(title: string, state: { label: string; colorKind: Pil
 }
 
 export function contributeAgentsPills(client: PluginClientContext) {
+  injectScrollbarStyles();
   const pills = new Map<string, {
     workspaceId: string;
     title: string;
