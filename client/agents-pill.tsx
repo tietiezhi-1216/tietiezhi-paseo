@@ -321,24 +321,20 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
 }
 
 const HIDE_SCROLLBAR_CSS = `
-[data-menu-surface="true"] {
-  overflow: hidden !important;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-[data-menu-surface="true"]::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
-.paseo-agents-scroll,
-.paseo-agents-scroll::-webkit-scrollbar,
+::-webkit-scrollbar,
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-track,
+[data-menu-surface="true"]::-webkit-scrollbar,
 [data-menu-surface="true"] *::-webkit-scrollbar {
   display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
 }
-.paseo-agents-scroll {
+* {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
@@ -352,6 +348,10 @@ function injectScrollbarStyles() {
   style.id = id;
   style.textContent = HIDE_SCROLLBAR_CSS;
   document.head?.appendChild(style);
+}
+
+if (typeof document !== "undefined") {
+  injectScrollbarStyles();
 }
 
 let activeAgentsPopoverCloser: (() => void) | null = null;
@@ -407,29 +407,55 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
   const [copiedCurrent, setCopiedCurrent] = useState(false);
-  return (
-    <View style={{ alignSelf: "stretch", minWidth: compact ? 280 : 360, maxHeight: compact ? 380 : 480, display: "flex", flexDirection: "column" }}>
-      {/* 1. 固定头部：当前会话标题 + 复制 ID (Fixed Header) */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexShrink: 0 }}>
-        <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 13, fontWeight: "700", flex: 1 }}>{currentTitle}</Text>
-        {currentAgentId ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="复制当前 Agent ID"
-            onPress={() => {
-              void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
-                setCopiedCurrent(true);
-                setTimeout(() => setCopiedCurrent(false), 1500);
-              }).catch(() => {});
-            }}
-          >
-            <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "700" }}>{copiedCurrent ? "已复制" : "复制 ID"}</Text>
-          </Pressable>
-        ) : null}
-      </View>
+  const popoverRef = useRef<any>(null);
 
-      {/* 2. 固定搜索栏 (Fixed Search Input) */}
-      <View style={{ marginBottom: 10, flexShrink: 0 }}>
+  useEffect(() => {
+    injectScrollbarStyles();
+    const el = popoverRef.current;
+    if (!el || typeof document === "undefined") return;
+    let p = el.parentElement;
+    while (p) {
+      p.style.scrollbarWidth = "none";
+      p.style.msOverflowStyle = "none";
+      p = p.parentElement;
+    }
+  }, []);
+
+  return (
+    <View ref={popoverRef} style={{ alignSelf: "stretch", minWidth: compact ? 280 : 360, position: "relative" }}>
+      {/* 🔒 1. 顶部绝对固定区：标题 + 复制 ID + 搜索输入框 (STICKY TOP - NEVER SCROLLS) */}
+      <View
+        {...({
+          style: {
+            position: "sticky",
+            top: -12,
+            zIndex: 99,
+            backgroundColor: props.theme.colors.surface1,
+            paddingTop: 4,
+            paddingBottom: 6,
+            marginBottom: 4,
+            flexShrink: 0,
+          }
+        } as any)}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+          <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 13, fontWeight: "700", flex: 1 }}>{currentTitle}</Text>
+          {currentAgentId ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="复制当前 Agent ID"
+              onPress={() => {
+                void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
+                  setCopiedCurrent(true);
+                  setTimeout(() => setCopiedCurrent(false), 1500);
+                }).catch(() => {});
+              }}
+            >
+              <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "700" }}>{copiedCurrent ? "已复制" : "复制 ID"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
         <TextInput
           ref={searchRef}
           autoFocus
@@ -445,33 +471,29 @@ function AgentsPopover(props: PluginButtonContentProps) {
             searchFocused.current = true;
             searchRef.current?.focus();
           }}
-          style={{ color: props.theme.colors.foreground, backgroundColor: props.theme.colors.surface1, borderColor: props.theme.colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 }}
+          style={{
+            color: props.theme.colors.foreground,
+            backgroundColor: props.theme.colors.surface0 ?? "#1c1f24",
+            borderColor: props.theme.colors.border,
+            borderWidth: 1,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+            fontSize: 12,
+          }}
         />
+        {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 6 }}>{navigationError}</Text> : null}
       </View>
-      {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingBottom: 8, flexShrink: 0 }}>{navigationError}</Text> : null}
 
-      {/* 3. 独立滚动区：只滚动下方面板，隐藏滚动条 (Scrollable Panel without Scrollbars) */}
-      <View
-        className="paseo-agents-scroll"
-        {...({
-          style: {
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-          }
-        } as any)}
-      >
-        <AgentActivity
-          theme={props.theme}
-          compact={compact}
-          currentServerId={props.host.id}
-          hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
-          query={query}
-          onSelectAgent={selectAgent}
-        />
-      </View>
+      {/* 📜 2. 独立列表区：只有输入框下方的列表在滚动 (List below scrolls underneath) */}
+      <AgentActivity
+        theme={props.theme}
+        compact={compact}
+        currentServerId={props.host.id}
+        hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+        query={query}
+        onSelectAgent={selectAgent}
+      />
     </View>
   );
 }
