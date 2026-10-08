@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Te
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentClose, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { dispatchWebAgentTarget, watchWebPopoverDismiss } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -42,6 +42,10 @@ function agentsPillState(agents: RemoteAgent[] | undefined, pending: boolean, fa
   if (working > 0) return { label: `working · ${working}`, colorKind: "running" };
   const done = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "done").length;
   if (done > 0) return { label: `done · ${done}`, colorKind: "success" };
+  const idle = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "idle").length;
+  if (idle > 0) return { label: `idle · ${idle}`, colorKind: "unknown" };
+  const closed = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "closed").length;
+  if (closed > 0) return { label: `closed · ${closed}`, colorKind: "unknown" };
   const total = (agents ?? []).length;
   return { label: `idle · ${total}`, colorKind: "unknown" };
 }
@@ -239,8 +243,10 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const pulse = useRef(new Animated.Value(0.35)).current;
   const paseo = usePaseo();
   const reloadRpc = useRpc(agentReload);
+  const closeRpc = useRpc(agentClose);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [reloadingId, setReloadingId] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
   const [reloadNote, setReloadNote] = useState<string | null>(null);
   const reloadAgent = (agent: RemoteAgent) => {
     if (reloadingId) return;
@@ -251,11 +257,33 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       ? paseo.agents.ref(agent.id).refresh()
       : reloadRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
     void Promise.resolve(request).then(() => {
-      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已重载`);
+      const existing = localAgentMap.get(agent.id);
+      if (existing) {
+        localAgentMap.set(agent.id, { ...existing, status: "idle" });
+        publishLocalAgents();
+      }
+      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
     }).catch((error: unknown) => {
       setReloadNote(error instanceof Error ? error.message : "重载失败");
     }).finally(() => {
       setReloadingId((current) => current === agent.id ? null : current);
+    });
+  };
+  const closeAgent = (agent: RemoteAgent) => {
+    if (closingId) return;
+    setClosingId(agent.id);
+    setReloadNote(null);
+    void closeRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id }).then(() => {
+      const existing = localAgentMap.get(agent.id);
+      if (existing) {
+        localAgentMap.set(agent.id, { ...existing, status: "closed", attentionReason: null });
+        publishLocalAgents();
+      }
+      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已关闭`);
+    }).catch((error: unknown) => {
+      setReloadNote(error instanceof Error ? error.message : "关闭失败");
+    }).finally(() => {
+      setClosingId((current) => current === agent.id ? null : current);
     });
   };
   useEffect(() => {
@@ -275,6 +303,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const working = all.filter(({ agent }) => agentDisplaySection(agent) === "working").sort(byRecent);
   const done = all.filter(({ agent }) => agentDisplaySection(agent) === "done").sort(byRecent);
   const idle = all.filter(({ agent }) => agentDisplaySection(agent) === "idle").sort(byRecent);
+  const closed = all.filter(({ agent }) => agentDisplaySection(agent) === "closed").sort(byRecent);
   const copyAgentId = (agentId: string) => {
     void copyText(agentIdClipboardText(agentId)).then(() => {
       setCopiedId(agentId);
@@ -294,8 +323,13 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
               <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}>{agent.name || agent.id}</Text>
             </View>
             <Text numberOfLines={1} style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>{formatRelativeTime(activityAt(agent))}</Text>
+            {label === "idle" || label === "done" ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`关闭 Agent ${agent.id}`} hitSlop={8} disabled={closingId === agent.id} onPress={(event) => { event.stopPropagation(); closeAgent(agent); }}>
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{closingId === agent.id ? "关闭中" : "关闭"}</Text>
+              </Pressable>
+            ) : null}
             <Pressable accessibilityRole="button" accessibilityLabel={`重载 Agent ${agent.id}`} hitSlop={8} disabled={reloadingId === agent.id} onPress={(event) => { event.stopPropagation(); reloadAgent(agent); }}>
-              <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
+              <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? (label === "closed" ? "恢复中" : "重载中") : (label === "closed" ? "恢复" : "重载")}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent ID ${agent.id}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); copyAgentId(agent.id); }}>
               <Text style={{ color: copiedId === agent.id ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{copiedId === agent.id ? "已复制" : "ID"}</Text>
@@ -314,6 +348,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
           {section("done", done, theme.colors.statusSuccess)}
           {section("working", working, theme.colors.statusWarning, true)}
           {section("idle", idle, theme.colors.foregroundMuted)}
+          {section("closed", closed, theme.colors.foregroundMuted)}
         </>
       )}
     </View>

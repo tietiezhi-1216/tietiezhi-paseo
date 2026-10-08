@@ -181,7 +181,7 @@ export const RemoteAgentSchema = z.object({
   parentAgentId: z.string().nullable(),
 });
 export type RemoteAgent = z.infer<typeof RemoteAgentSchema>;
-export type AgentDisplaySection = "error" | "working" | "done" | "idle";
+export type AgentDisplaySection = "error" | "working" | "done" | "idle" | "closed";
 
 export function agentMatchesQuery(
   agent: Pick<RemoteAgent, "id" | "name" | "hostName" | "hostId">,
@@ -231,7 +231,8 @@ export function agentDisplaySection(
   if (agent.status === "error") return "error";
   if (agent.status === "running" || agent.status === "initializing") return "working";
   if (agent.status !== "closed" && agent.attentionReason === "finished") return "done";
-  if (agent.status === "idle" || agent.status === "closed") return "idle";
+  if (agent.status === "closed") return "closed";
+  if (agent.status === "idle") return "idle";
   return null;
 }
 
@@ -259,6 +260,19 @@ export const agentReload = defineRpc({
   output: z.object({
     agentId: z.string(),
     hostId: z.string(),
+  }),
+});
+
+export const agentClose = defineRpc({
+  name: "slotgame.agent.close",
+  input: z.object({
+    hostId: z.string().default(""),
+    serverId: z.string().nullable().optional(),
+    agentId: z.string().min(1),
+  }),
+  output: z.object({
+    agentId: z.string(),
+    closed: z.boolean(),
   }),
 });
 

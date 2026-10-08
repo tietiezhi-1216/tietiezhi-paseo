@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
@@ -41,6 +41,43 @@ let agentCache: { at: number; value: Awaited<ReturnType<typeof readRemoteAgents>
 let agentInFlight: Promise<Awaited<ReturnType<typeof readRemoteAgents>>> | null = null;
 const lastAgentsByHost = new Map<string, { agents: RemoteAgentResult[]; serverId: string | null }>();
 const remoteAgentClients = new Map<string, RemoteAgentClientEntry>();
+
+const CLOSED_AGENTS_PATH = join(homedir(), ".paseo", "tietiezhi", "closed-agents.json");
+let closedAgentSet: Set<string> | null = null;
+
+export function loadClosedAgents(): Set<string> {
+  if (closedAgentSet) return closedAgentSet;
+  try {
+    if (existsSync(CLOSED_AGENTS_PATH)) {
+      const data = JSON.parse(readFileSync(CLOSED_AGENTS_PATH, "utf8"));
+      closedAgentSet = new Set(Array.isArray(data) ? data : []);
+      return closedAgentSet;
+    }
+  } catch {}
+  closedAgentSet = new Set();
+  return closedAgentSet;
+}
+
+export function recordClosedAgent(id: string) {
+  const set = loadClosedAgents();
+  set.add(id);
+  saveClosedAgents(set);
+}
+
+export function unrecordClosedAgent(id: string) {
+  const set = loadClosedAgents();
+  if (set.delete(id)) {
+    saveClosedAgents(set);
+  }
+}
+
+function saveClosedAgents(set: Set<string>) {
+  try {
+    const dir = join(homedir(), ".paseo", "tietiezhi");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(CLOSED_AGENTS_PATH, JSON.stringify([...set]), "utf8");
+  } catch {}
+}
 
 function configuredAgentHosts() {
   const configPath = AGENT_CONFIG_PATHS.find((path) => existsSync(path));
@@ -124,13 +161,14 @@ async function readRemoteAgents() {
       entry = await ensureRemoteAgentClient(host);
       const serverId = resolveHostServerId(entry.daemon.getLastServerInfoMessage()?.serverId, host.serverId);
       const listed = await entry.client.agents.list({ scope: "active", filter: { includeArchived: false } });
+      const closedSet = loadClosedAgents();
       const agents = listed.entries.map(({ agent, project }) => ({
         hostId: host.id,
         hostName: host.name,
         serverId,
         id: agent.id,
         name: agent.title ?? agent.id,
-        status: agent.status,
+        status: (closedSet.has(agent.id) && agent.status !== "running" ? "closed" : agent.status) as RemoteAgentResult["status"],
         requiresAttention: agent.requiresAttention ?? false,
         attentionReason: agent.attentionReason ?? null,
         createdAt: agent.createdAt,
@@ -162,6 +200,7 @@ async function readRemoteAgents() {
 }
 
 export async function reloadRemoteAgent(input: { hostId: string; serverId?: string | null; agentId: string }) {
+  unrecordClosedAgent(input.agentId);
   const hosts = configuredAgentHosts();
   const host = resolveReloadHost(hosts, input);
   if (!host) throw new Error("找不到这个 Agent 所在的局域网主机");
@@ -169,6 +208,24 @@ export async function reloadRemoteAgent(input: { hostId: string; serverId?: stri
   await entry.client.agents.ref(input.agentId).refresh();
   agentCache = null;
   return { agentId: input.agentId, hostId: host.id };
+}
+
+export async function closeAgentAction(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
+  const hosts = configuredAgentHosts();
+  const host = resolveReloadHost(hosts, input);
+  if (host) {
+    try {
+      const entry = await ensureRemoteAgentClient(host);
+      await (entry.daemon as any).cancelAgent?.(input.agentId).catch(() => {});
+    } catch {}
+  } else if (localPaseo) {
+    try {
+      await (localPaseo as any).cancelAgent?.(input.agentId).catch(() => {});
+    } catch {}
+  }
+  recordClosedAgent(input.agentId);
+  agentCache = null;
+  return { agentId: input.agentId, closed: true };
 }
 
 export async function closeRemoteAgentClients(): Promise<void> {

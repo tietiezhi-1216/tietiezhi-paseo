@@ -95,6 +95,7 @@ test("agent display sections hide archived agents", () => {
   assert.equal(isListedAgent({ archivedAt: null, parentAgentId: null }), true);
   assert.equal(agentDisplaySection({ status: "running", attentionReason: null, archivedAt: null }), "working");
   assert.equal(agentDisplaySection({ status: "idle", attentionReason: "finished", archivedAt: null }), "done");
+  assert.equal(agentDisplaySection({ status: "closed", attentionReason: null, archivedAt: null }), "closed");
 });
 
 test("live patches keep finished agents in done until they run again", () => {
