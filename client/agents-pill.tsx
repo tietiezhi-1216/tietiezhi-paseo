@@ -329,14 +329,7 @@ const HIDE_SCROLLBAR_CSS = `
   overflow-y: hidden !important;
 }
 
-/* 2. Tighten card internal padding for modern compact aesthetic */
-[data-menu-surface="true"] [style*="padding: 12px"],
-[data-menu-surface="true"] [style*="padding: 16px"] {
-  padding: 6px 8px !important;
-  gap: 0px !important;
-}
-
-/* 3. Completely eliminate all WebKit and Firefox scrollbars */
+/* 2. Completely eliminate all WebKit and Firefox scrollbars */
 ::-webkit-scrollbar,
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -355,7 +348,7 @@ const HIDE_SCROLLBAR_CSS = `
   -ms-overflow-style: none !important;
 }
 
-/* 4. Re-enable scrolling ONLY on the middle agent list */
+/* 3. Re-enable scrolling ONLY on the middle agent list */
 .paseo-agents-list-scroll,
 .paseo-agents-list-scroll > div {
   overflow-y: auto !important;
@@ -436,16 +429,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
 
-    // 1. Tighten card internal padding from Paseo wrapper
+    // 1. Set comfortable, compact card internal padding without clipping the input
     const contentParent = el.parentElement;
     if (contentParent) {
-      contentParent.style.setProperty("padding", "6px 8px", "important");
+      contentParent.style.setProperty("padding", "10px 10px 8px 10px", "important");
       contentParent.style.setProperty("gap", "0px", "important");
-      const menuPage = contentParent.parentElement;
-      if (menuPage) {
-        menuPage.style.setProperty("padding-top", "0px", "important");
-        menuPage.style.setProperty("padding-bottom", "0px", "important");
-      }
     }
 
     // 2. Lock outer popover shell so outer panel never scrolls
@@ -467,18 +455,18 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 380,
-        maxHeight: 380,
+        height: 385,
+        maxHeight: 385,
         display: "flex",
         flexDirection: "column",
-        paddingHorizontal: 0,
-        paddingTop: 0,
+        paddingHorizontal: 2,
+        paddingTop: 2,
         boxSizing: "border-box" as any,
         overflow: "hidden",
       }}
     >
-      {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls) */}
-      <View style={{ flexShrink: 0, marginBottom: 6 }}>
+      {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls, comfortable safe margin) */}
+      <View style={{ flexShrink: 0, marginBottom: 7, paddingHorizontal: 1, paddingTop: 1 }}>
         <TextInput
           ref={searchRef}
           autoFocus
@@ -499,9 +487,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
             backgroundColor: props.theme.colors.surface0 ?? "#1c1f24",
             borderColor: props.theme.colors.border,
             borderWidth: 1,
-            borderRadius: 6,
-            paddingHorizontal: 8,
-            paddingVertical: 6,
+            borderRadius: 7,
+            paddingHorizontal: 10,
+            paddingVertical: 7,
             fontSize: 12,
           }}
         />
@@ -512,7 +500,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         {...({ className: "paseo-agents-list-scroll" } as any)}
-        style={{ flex: 1, minHeight: 0, height: 295, maxHeight: 300 }}
+        style={{ flex: 1, minHeight: 0, height: 295, maxHeight: 300, paddingHorizontal: 1 }}
         contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
       >
         <AgentActivity
@@ -533,8 +521,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          paddingTop: 6,
+          paddingTop: 7,
           paddingBottom: 2,
+          paddingHorizontal: 1,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
           marginTop: 4,
