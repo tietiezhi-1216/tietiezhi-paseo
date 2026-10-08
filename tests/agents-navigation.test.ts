@@ -144,3 +144,25 @@ test("agentReload supports password, target and savePassword", async () => {
   assert.equal(parsed.savePassword, true);
 });
 
+test("getAgentDateBucket partitions agents into today, yesterday, this week, this month, earlier", async () => {
+  const { getAgentDateBucket, ARCHIVED_DATE_GROUPS } = await import("../shared/agents.ts");
+  assert.deepEqual(ARCHIVED_DATE_GROUPS, ["今天", "昨天", "本周", "本月", "更早"]);
+
+  // 本地时间 2026-10-09 14:00:00 (周五)
+  const fixedNow = new Date(2026, 9, 9, 14, 0, 0).getTime();
+
+  // 今天 10:00
+  assert.equal(getAgentDateBucket({ archivedAt: new Date(2026, 9, 9, 10, 0, 0).toISOString() }, fixedNow), "今天");
+  // 昨天 10:00
+  assert.equal(getAgentDateBucket({ archivedAt: new Date(2026, 9, 8, 10, 0, 0).toISOString() }, fixedNow), "昨天");
+  // 本周二 10-06
+  assert.equal(getAgentDateBucket({ archivedAt: new Date(2026, 9, 6, 10, 0, 0).toISOString() }, fixedNow), "本周");
+  // 本月初 10-02 (上周五)
+  assert.equal(getAgentDateBucket({ archivedAt: new Date(2026, 9, 2, 10, 0, 0).toISOString() }, fixedNow), "本月");
+  // 上个月 09-20
+  assert.equal(getAgentDateBucket({ archivedAt: new Date(2026, 8, 20, 10, 0, 0).toISOString() }, fixedNow), "更早");
+  // 无效时间
+  assert.equal(getAgentDateBucket({ archivedAt: null }, fixedNow), "更早");
+});
+
+

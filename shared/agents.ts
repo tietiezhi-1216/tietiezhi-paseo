@@ -221,6 +221,34 @@ export function agentActivityAt(agent: { lastUserMessageAt?: string | null; crea
   return agent.lastUserMessageAt ?? agent.createdAt ?? agent.updatedAt ?? null;
 }
 
+export const ARCHIVED_DATE_GROUPS = ["今天", "昨天", "本周", "本月", "更早"] as const;
+export type DateBucket = typeof ARCHIVED_DATE_GROUPS[number];
+
+export function getAgentDateBucket(
+  agent: { archivedAt?: string | null; lastUserMessageAt?: string | null; createdAt?: string | null; updatedAt?: string | null },
+  now = Date.now(),
+): DateBucket {
+  const timeStr = agent.archivedAt || agent.lastUserMessageAt || agent.updatedAt || agent.createdAt;
+  const timestamp = timeStr ? Date.parse(timeStr) : 0;
+  if (!timestamp || !Number.isFinite(timestamp)) return "更早";
+
+  const nowDate = new Date(now);
+  const todayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+  if (timestamp >= todayStart) return "今天";
+
+  const yesterdayStart = todayStart - 86_400_000;
+  if (timestamp >= yesterdayStart) return "昨天";
+
+  const dayOfWeek = (nowDate.getDay() + 6) % 7;
+  const thisWeekStart = todayStart - dayOfWeek * 86_400_000;
+  if (timestamp >= thisWeekStart) return "本周";
+
+  const thisMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).getTime();
+  if (timestamp >= thisMonthStart) return "本月";
+
+  return "更早";
+}
+
 export function combineOwnedAgents(owned: RemoteAgent[], borrowed: RemoteAgent[], currentServerId?: string | null): RemoteAgent[] {
   const ownedListed = owned.filter((agent) => isDisplayableAgent(agent));
   const key = (agent: RemoteAgent) => JSON.stringify([agent.serverId ?? agent.hostId, agent.id]);

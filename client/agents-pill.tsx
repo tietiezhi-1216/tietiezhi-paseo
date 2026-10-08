@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Te
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -402,6 +402,16 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const idle = all.filter(({ agent }) => agentDisplaySection(agent) === "idle").sort(byRecent);
   const closed = all.filter(({ agent }) => agentDisplaySection(agent) === "closed").sort(byRecent);
   const archived = all.filter(({ agent }) => agentDisplaySection(agent) === "archived").sort(byRecent);
+  const archivedGroups: Record<DateBucket, typeof all> = {
+    今天: [],
+    昨天: [],
+    本周: [],
+    本月: [],
+    更早: [],
+  };
+  for (const item of archived) {
+    archivedGroups[getAgentDateBucket(item.agent)].push(item);
+  }
   const isArchivedExpanded = showArchived || query.trim().length > 0;
   const copyAgentId = (agentId: string) => {
     void copyText(agentIdClipboardText(agentId)).then(() => {
@@ -409,39 +419,40 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       setTimeout(() => setCopiedId((current) => current === agentId ? null : current), 1200);
     }).catch(() => {});
   };
+  const renderAgentRow = ({ agent, workspace }: (typeof all)[number], label: string, color: string, breathing = false) => (
+    <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
+          {workspace ? <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foregroundMuted, fontSize: 11 }}>{workspace}</Text> : null}
+          {workspace ? <Text style={{ color: theme.colors.border, fontSize: 11 }}>/</Text> : null}
+          <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}>{agent.name || agent.id}</Text>
+        </View>
+        <Text numberOfLines={1} style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>{formatRelativeTime(activityAt(agent))}</Text>
+        {label === "idle" || label === "done" || label === "closed" ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`归档 Agent ${agent.id}`} hitSlop={8} disabled={archivingId === agent.id} onPress={(event) => { event.stopPropagation(); archiveAgent(agent); }}>
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{archivingId === agent.id ? "归档中" : "归档"}</Text>
+          </Pressable>
+        ) : null}
+        {label === "archived" ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`恢复 Agent ${agent.id}`} hitSlop={8} disabled={unarchivingId === agent.id} onPress={(event) => { event.stopPropagation(); unarchiveAgent(agent); }}>
+            <Text style={{ color: theme.colors.statusSuccess, fontSize: 10, fontWeight: "700" }}>{unarchivingId === agent.id ? "恢复中" : "恢复"}</Text>
+          </Pressable>
+        ) : (
+          <Pressable accessibilityRole="button" accessibilityLabel={`重载 Agent ${agent.id}`} hitSlop={8} disabled={reloadingId === agent.id} onPress={(event) => { event.stopPropagation(); reloadAgent(agent); }}>
+            <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
+          </Pressable>
+        )}
+        <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent ID ${agent.id}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); copyAgentId(agent.id); }}>
+          <Text style={{ color: copiedId === agent.id ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{copiedId === agent.id ? "已复制" : "ID"}</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
   const section = (label: string, items: typeof all, color: string, breathing = false) => items.length === 0 ? null : (
     <View style={{ gap: 4 }}>
       <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
-      {items.map(({ agent, workspace }) => (
-        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
-              <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
-              {workspace ? <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foregroundMuted, fontSize: 11 }}>{workspace}</Text> : null}
-              {workspace ? <Text style={{ color: theme.colors.border, fontSize: 11 }}>/</Text> : null}
-              <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}>{agent.name || agent.id}</Text>
-            </View>
-            <Text numberOfLines={1} style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>{formatRelativeTime(activityAt(agent))}</Text>
-            {label === "idle" || label === "done" || label === "closed" ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={`归档 Agent ${agent.id}`} hitSlop={8} disabled={archivingId === agent.id} onPress={(event) => { event.stopPropagation(); archiveAgent(agent); }}>
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{archivingId === agent.id ? "归档中" : "归档"}</Text>
-              </Pressable>
-            ) : null}
-            {label === "archived" ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={`恢复 Agent ${agent.id}`} hitSlop={8} disabled={unarchivingId === agent.id} onPress={(event) => { event.stopPropagation(); unarchiveAgent(agent); }}>
-                <Text style={{ color: theme.colors.statusSuccess, fontSize: 10, fontWeight: "700" }}>{unarchivingId === agent.id ? "恢复中" : "恢复"}</Text>
-              </Pressable>
-            ) : (
-              <Pressable accessibilityRole="button" accessibilityLabel={`重载 Agent ${agent.id}`} hitSlop={8} disabled={reloadingId === agent.id} onPress={(event) => { event.stopPropagation(); reloadAgent(agent); }}>
-                <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
-              </Pressable>
-            )}
-            <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent ID ${agent.id}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); copyAgentId(agent.id); }}>
-              <Text style={{ color: copiedId === agent.id ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{copiedId === agent.id ? "已复制" : "ID"}</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      ))}
+      {items.map((item) => renderAgentRow(item, label, color, breathing))}
     </View>
   );
   return (
@@ -597,7 +608,22 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
                   </Text>
                 ) : null}
               </Pressable>
-              {isArchivedExpanded ? section("archived", archived, theme.colors.foregroundMuted) : null}
+              {isArchivedExpanded ? (
+                <View style={{ gap: 8, marginTop: 2 }}>
+                  {ARCHIVED_DATE_GROUPS.map((bucket) => {
+                    const items = archivedGroups[bucket];
+                    if (!items || items.length === 0) return null;
+                    return (
+                      <View key={bucket} style={{ gap: 4 }}>
+                        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", paddingHorizontal: 4, letterSpacing: 0.2 }}>
+                          {bucket} · {items.length}
+                        </Text>
+                        {items.map((item) => renderAgentRow(item, "archived", theme.colors.foregroundMuted))}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
           ) : null}
         </>
