@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.87.1",
+    "https-proxy-agent": "^7.0.6",
     "proper-lockfile": "4.1.2"
   }
 }

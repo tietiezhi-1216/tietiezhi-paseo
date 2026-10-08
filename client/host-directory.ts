@@ -1,7 +1,39 @@
-import type { PaseoApi, PaseoAgentListResult } from "@getpaseo/client";
 import { agentSection, type AgentRow } from "../shared/agents.ts";
 
-export type GetHostApi = (serverId: string) => Pick<PaseoApi, "agents">;
+export interface HostAgentsApi {
+  agents: {
+    list(options: {
+      scope?: string;
+      filter?: { includeArchived?: boolean };
+      page?: { limit?: number; cursor?: string };
+    }): Promise<{
+      entries: Array<{
+        agent: {
+          id: string;
+          title?: string | null;
+          status: string;
+          provider: string;
+          model?: string | null;
+          runtimeInfo?: { model?: string | null } | null;
+          archivedAt?: string | null;
+          updatedAt?: string | null;
+          lastUserMessageAt?: string | null;
+          workspaceId?: string | null;
+          requiresAttention?: boolean;
+          attentionReason?: string | null;
+          labels?: Record<string, string>;
+        };
+        project?: { workspaceName?: string | null } | null;
+      }>;
+      pageInfo: { hasMore?: boolean; nextCursor?: string | null };
+    }>;
+    ref(id: string): {
+      send(text: string, options?: { messageId?: string; activeTurnBehavior?: string }): Promise<void>;
+    };
+  };
+}
+
+export type GetHostApi = (serverId: string) => HostAgentsApi;
 
 function checkAbort(signal?: AbortSignal) {
   if (signal?.aborted) throw new Error("读取已取消");
@@ -16,7 +48,7 @@ export async function readHostAgents(getApi: GetHostApi, serverId: string, signa
   let cursor: string | undefined;
   for (let page = 0; page < 100; page++) {
     checkAbort(signal);
-    const result: PaseoAgentListResult = await api.agents.list({
+    const result = await api.agents.list({
       scope: "active",
       filter: { includeArchived: false },
       page: { limit: 200, cursor },
