@@ -126,6 +126,13 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
               );
             }
             const q = quotaFor(account);
+            if (q?.error && /授权已失效|401|登录/.test(q.error)) {
+              return (
+                <Text style={{ color: theme.colors.statusWarning, fontSize: 11, fontWeight: "600" }}>
+                  需登录
+                </Text>
+              );
+            }
             const window = selectQuotaWindow(account.family, null, q?.windows ?? []);
             if (!window) {
               return (
@@ -159,6 +166,15 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
 export function AccountQuotaDetails({ theme, account, quota, pending }: {
   theme: PluginSurfaceProps["theme"]; account: Account; quota?: AccountQuota; pending: boolean;
 }) {
+  if (quota?.error && /授权已失效|401|登录/.test(quota.error)) {
+    return (
+      <View style={{ marginTop: 2, paddingVertical: 2 }}>
+        <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "500" }}>
+          需登录 · 授权已失效
+        </Text>
+      </View>
+    );
+  }
   const groups = account.family === "antigravity" ? quotaGroups(quota?.windows ?? []) : [];
   const formatDays = (ts: number) => {
     const d = (ts - Date.now()) / 86400000;
@@ -240,7 +256,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
               )}
               {window.resetAt ? (
                 <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
-                  {compactDateTime(window.resetAt)} 重置 ({timeUntilReset(window.resetAt, Date.now())})
+                  {compactDateTime(window.resetAt)} 重置 ({window.resetAt <= Date.now() ? "已重置" : timeUntilReset(window.resetAt, Date.now())})
                 </Text>
               ) : null}
             </View>

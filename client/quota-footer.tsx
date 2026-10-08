@@ -170,8 +170,15 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const windows = q?.windows ?? [];
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
   const activeWindow = selectQuotaWindow(footerFamily, activePool, windows);
-  const meters = [{ name: "", window: activeWindow }];
-  const time = activeWindow ? naturalCountdown(activeWindow.resetAt, Date.now()) : quota.isFetching ? "读取中…" : "—";
+  const isAuthError = Boolean(q?.error && /授权已失效|401|登录/.test(q.error));
+  const meters = [{ name: "", window: isAuthError ? null : activeWindow }];
+  const time = isAuthError
+    ? "需登录"
+    : activeWindow
+      ? (activeWindow.resetAt != null && activeWindow.resetAt <= Date.now() ? "已重置" : naturalCountdown(activeWindow.resetAt, Date.now()))
+      : quota.isFetching
+        ? "读取中…"
+        : "—";
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ width: "100%", minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 34, paddingHorizontal: dense ? 6 : 10, paddingVertical: 4, borderRadius: 6, gap: dense ? 4 : 8 }}>

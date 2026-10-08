@@ -285,7 +285,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     <View style={{ gap: 4 }}>
       <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map(({ agent, workspace }) => (
-        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 7 : 8 }}>
+        <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 9 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
             <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
               <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
@@ -485,19 +485,27 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 390,
-        maxHeight: 390,
+        height: 395,
+        maxHeight: 395,
         display: "flex",
         flexDirection: "column",
-        paddingTop: 10,
-        paddingHorizontal: 10,
-        paddingBottom: 8,
+        backgroundColor: props.theme.colors.surface0,
         boxSizing: "border-box" as any,
         overflow: "hidden",
       }}
     >
-      {/* 🔍 1. 顶部固定搜索栏 (Refined Search Bar with Magnifying Glass & Balanced Margins) */}
-      <View style={{ flexShrink: 0, marginBottom: 10 }}>
+      {/* 🔒 1. 顶部固定搜索区 (Pinned Navigation Header - NEVER scrolls) */}
+      <View
+        style={{
+          flexShrink: 0,
+          backgroundColor: props.theme.colors.surface1,
+          borderBottomWidth: 1,
+          borderBottomColor: props.theme.colors.border,
+          paddingHorizontal: 10,
+          paddingTop: 10,
+          paddingBottom: 9,
+        }}
+      >
         <View
           style={{
             flexDirection: "row",
@@ -548,12 +556,23 @@ function AgentsPopover(props: PluginButtonContentProps) {
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 4 }}>{navigationError}</Text> : null}
       </View>
 
-      {/* 📜 2. 中间独立滚动区：Agent 列表 (ONLY the list in the middle scrolls) */}
+      {/* 📜 2. 中间独立滚动区：卡片视口 (Scrollable Card Deck Viewport - ONLY this scrolls) */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         {...({ className: "paseo-agents-list-scroll" } as any)}
-        style={{ flex: 1, minHeight: 0, height: 290, maxHeight: 300 }}
-        contentContainerStyle={{ gap: 8, paddingBottom: 6 }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          height: 290,
+          maxHeight: 300,
+          backgroundColor: props.theme.colors.surface0,
+        }}
+        contentContainerStyle={{
+          paddingHorizontal: 10,
+          paddingTop: 9,
+          paddingBottom: 9,
+          gap: 9,
+        }}
       >
         <AgentActivity
           theme={props.theme}
@@ -565,7 +584,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
         />
       </ScrollView>
 
-      {/* 🔒 3. 底部固定底栏：当前会话信息 + 复制 ID (Fixed Footer at Bottom, NEVER scrolls) */}
+      {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock - NEVER scrolls) */}
       <View
         style={{
           flexShrink: 0,
@@ -573,12 +592,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          paddingTop: 8,
-          paddingBottom: 2,
-          paddingHorizontal: 2,
+          backgroundColor: props.theme.colors.surface1,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
-          marginTop: 2,
+          paddingHorizontal: 11,
+          paddingVertical: 7,
         }}
       >
         <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", flex: 1 }}>
@@ -595,9 +613,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
               }).catch(() => {});
             }}
             style={{
-              paddingHorizontal: 7,
+              paddingHorizontal: 8,
               paddingVertical: 2.5,
               borderRadius: 4,
+              borderWidth: 1,
+              borderColor: props.theme.colors.border,
               backgroundColor: props.theme.colors.surface0 ?? "rgba(255,255,255,0.06)",
             }}
           >
