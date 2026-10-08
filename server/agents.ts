@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
@@ -58,16 +58,36 @@ export function loadClosedAgents(): Set<string> {
   return closedAgentSet;
 }
 
+function tryUpdateAgentFileStatus(agentId: string, status: "closed" | "idle") {
+  try {
+    const agentsDir = join(homedir(), ".paseo", "agents");
+    if (!existsSync(agentsDir)) return;
+    for (const proj of readdirSync(agentsDir)) {
+      const filePath = join(agentsDir, proj, `${agentId}.json`);
+      if (existsSync(filePath)) {
+        const raw = readFileSync(filePath, "utf8");
+        const json = JSON.parse(raw);
+        json.lastStatus = status;
+        json.updatedAt = new Date().toISOString();
+        writeFileSync(filePath, JSON.stringify(json, null, 2), "utf8");
+        break;
+      }
+    }
+  } catch {}
+}
+
 export function recordClosedAgent(id: string) {
   const set = loadClosedAgents();
   set.add(id);
   saveClosedAgents(set);
+  tryUpdateAgentFileStatus(id, "closed");
 }
 
 export function unrecordClosedAgent(id: string) {
   const set = loadClosedAgents();
   if (set.delete(id)) {
     saveClosedAgents(set);
+    tryUpdateAgentFileStatus(id, "idle");
   }
 }
 
@@ -195,6 +215,7 @@ async function readRemoteAgents() {
       serverId: results[index]?.serverId ?? null,
       online: results[index]?.online ?? false,
     })),
+    closedIds: [...loadClosedAgents()],
     fetchedAt: new Date().toISOString(),
   };
 }

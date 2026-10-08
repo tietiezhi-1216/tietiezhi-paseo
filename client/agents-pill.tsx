@@ -66,6 +66,8 @@ function StatusDot({ color, size }: { color: string; size: number }) {
   );
 }
 
+const closedAgentIds = new Set<string>();
+
 function mapLocalAgent(hostId: string, hostName: string, agent: {
   id: string;
   title?: string | null;
@@ -79,15 +81,17 @@ function mapLocalAgent(hostId: string, hostName: string, agent: {
   archivedAt?: string | null;
   labels?: Record<string, string>;
 }, workspace: string | null): RemoteAgent {
+  const isClosed = closedAgentIds.has(agent.id);
+  const status = isClosed && agent.status !== "running" ? "closed" : agent.status;
   return {
     hostId,
     hostName,
     serverId: hostId,
     id: agent.id,
     name: agent.title ?? agent.id,
-    status: agent.status,
-    requiresAttention: agent.requiresAttention ?? false,
-    attentionReason: agent.attentionReason ?? null,
+    status,
+    requiresAttention: isClosed ? false : (agent.requiresAttention ?? false),
+    attentionReason: isClosed ? null : (agent.attentionReason ?? null),
     createdAt: agent.createdAt ?? null,
     updatedAt: agent.updatedAt ?? null,
     lastUserMessageAt: agent.lastUserMessageAt ?? null,
@@ -197,6 +201,22 @@ function useOwnedAgents(hostId: string, hostName: string) {
     refetchOnReconnect: true,
     retry: 1,
   });
+  useEffect(() => {
+    if (remote.data?.closedIds && remote.data.closedIds.length > 0) {
+      let changed = false;
+      for (const id of remote.data.closedIds) {
+        if (!closedAgentIds.has(id)) {
+          closedAgentIds.add(id);
+          changed = true;
+          const existing = localAgentMap.get(id);
+          if (existing && existing.status !== "closed" && existing.status !== "running") {
+            localAgentMap.set(id, { ...existing, status: "closed", attentionReason: null, requiresAttention: false });
+          }
+        }
+      }
+      if (changed) publishLocalAgents();
+    }
+  }, [remote.data?.closedIds]);
   return {
     agents: combineOwnedAgents(local, remote.data?.agents ?? [], hostId),
     isPending: local.length === 0 && !remote.data && remote.isPending,
@@ -252,16 +272,17 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     if (reloadingId) return;
     setReloadingId(agent.id);
     setReloadNote(null);
+    closedAgentIds.delete(agent.id);
+    const existing = localAgentMap.get(agent.id);
+    if (existing) {
+      localAgentMap.set(agent.id, { ...existing, status: "idle" });
+      publishLocalAgents();
+    }
     const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
     const request = local
       ? paseo.agents.ref(agent.id).refresh()
       : reloadRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
     void Promise.resolve(request).then(() => {
-      const existing = localAgentMap.get(agent.id);
-      if (existing) {
-        localAgentMap.set(agent.id, { ...existing, status: "idle" });
-        publishLocalAgents();
-      }
       setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
     }).catch((error: unknown) => {
       setReloadNote(error instanceof Error ? error.message : "重载失败");
@@ -273,14 +294,20 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     if (closingId) return;
     setClosingId(agent.id);
     setReloadNote(null);
+    closedAgentIds.add(agent.id);
+    const existing = localAgentMap.get(agent.id);
+    if (existing) {
+      localAgentMap.set(agent.id, { ...existing, status: "closed", attentionReason: null, requiresAttention: false });
+      publishLocalAgents();
+    }
     void closeRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id }).then(() => {
-      const existing = localAgentMap.get(agent.id);
-      if (existing) {
-        localAgentMap.set(agent.id, { ...existing, status: "closed", attentionReason: null });
-        publishLocalAgents();
-      }
       setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已关闭`);
     }).catch((error: unknown) => {
+      closedAgentIds.delete(agent.id);
+      if (existing) {
+        localAgentMap.set(agent.id, existing);
+        publishLocalAgents();
+      }
       setReloadNote(error instanceof Error ? error.message : "关闭失败");
     }).finally(() => {
       setClosingId((current) => current === agent.id ? null : current);
