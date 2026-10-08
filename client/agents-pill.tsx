@@ -321,8 +321,27 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
 }
 
 const HIDE_SCROLLBAR_CSS = `
-.paseo-no-scrollbar::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-.paseo-no-scrollbar { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+[data-menu-surface="true"] {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+[data-menu-surface="true"]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.paseo-agents-scroll,
+.paseo-agents-scroll::-webkit-scrollbar,
+[data-menu-surface="true"] *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.paseo-agents-scroll {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
 `;
 
 function injectScrollbarStyles() {
@@ -433,7 +452,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
 
       {/* 3. 独立滚动区：只滚动下方面板，隐藏滚动条 (Scrollable Panel without Scrollbars) */}
       <View
-        className="paseo-no-scrollbar"
+        className="paseo-agents-scroll"
         {...({
           style: {
             flex: 1,
@@ -458,7 +477,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
 }
 
 function formatSessionPill(_title: string, state: { label: string; colorKind: PillColorKind }): string {
-  return state.label;
+  if (state.label && state.label !== "loading") return state.label;
+  return "working";
 }
 
 export function contributeAgentsPills(client: PluginClientContext) {
@@ -514,7 +534,7 @@ export function contributeAgentsPills(client: PluginClientContext) {
       button: {
         title: "当前会话与 Agents",
         icon: AgentsStatusIcon,
-        label: agentTitle,
+        label: formatSessionPill("", lastState),
         behavior: { kind: "popover", Content: AgentsPopover },
       },
     });
