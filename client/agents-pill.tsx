@@ -413,6 +413,23 @@ function AgentsPopover(props: PluginButtonContentProps) {
     injectScrollbarStyles();
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
+    try {
+      let curr = el;
+      const path: any[] = [];
+      while (curr && path.length < 8) {
+        path.push({
+          tag: curr.tagName,
+          className: curr.className,
+          style: curr.getAttribute("style"),
+          dataset: { ...curr.dataset },
+          overflowY: window.getComputedStyle(curr).overflowY,
+          clientHeight: curr.clientHeight,
+          scrollHeight: curr.scrollHeight,
+        });
+        curr = curr.parentElement;
+      }
+      console.log("[POPOVER DOM HIERARCHY]", JSON.stringify(path));
+    } catch {}
     let p = el.parentElement;
     while (p) {
       p.style.scrollbarWidth = "none";
