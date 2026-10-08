@@ -6,8 +6,9 @@ test("isQuotaExhausted detects 429 and rate limit errors", () => {
   assert.equal(isQuotaExhausted({ kind: "failed", error: { message: "HTTP 429 Too Many Requests" } }, []), true);
   assert.equal(isQuotaExhausted({ kind: "failed", error: { message: "rate_limit_exceeded: quota is depleted" } }, []), true);
   assert.equal(isQuotaExhausted({ kind: "failed", error: { message: "RESOURCE_EXHAUSTED: You have exceeded your current quota" } }, []), true);
-  assert.equal(isQuotaExhausted({ kind: "completed" }, [{ error: "Rate limit reached, please try again later" }]), true);
-  assert.equal(isQuotaExhausted({ kind: "completed" }, [{ message: "额度已耗尽，请稍后再试" }]), true);
+  assert.equal(isQuotaExhausted({ kind: "completed" }, [{ type: "error", error: "Rate limit reached, please try again later" }]), true);
+  assert.equal(isQuotaExhausted({ kind: "completed" }, [{ isError: true, message: "429: quota is depleted" }]), true);
+  assert.equal(isQuotaExhausted({ kind: "completed" }, [{ type: "assistant_message", text: "谈到额度已耗尽的话题" }]), false);
   assert.equal(isQuotaExhausted({ kind: "completed" }, []), false);
   assert.equal(isQuotaExhausted({ kind: "failed", error: { message: "File not found" } }, []), false);
 });

@@ -3,18 +3,17 @@ import { AccountService } from "./accounts.ts";
 import type { Family } from "../shared/accounts.ts";
 
 export function isQuotaExhausted(outcome: PluginLifecycleEvents["agent.turn_ended"]["outcome"], timeline: readonly any[]): boolean {
-  const errorText = outcome.kind === "failed" ? `${outcome.error?.code || ""} ${outcome.error?.message || ""}` : "";
-  const lastItems = timeline.slice(-5);
-  const timelineText = lastItems.map((item) => {
-    if (typeof item === "string") return item;
-    if (item && typeof item === "object") {
-      return `${item.error || ""} ${item.message || ""} ${item.content || ""} ${item.text || ""} ${JSON.stringify(item.data || {})}`;
-    }
-    return "";
-  }).join(" ");
-  const combined = (errorText + " " + timelineText).toLowerCase();
+  // Only an actual failed turn or explicit provider failure can trigger auto-switch!
+  // Normal completed chat messages must NEVER trigger auto-switch!
+  if (outcome.kind !== "failed") {
+    const errorItems = timeline.slice(-5).filter((item) => item && (item.type === "error" || item.isError || item.status === "failed"));
+    if (!errorItems.length) return false;
+    const errorText = errorItems.map((item) => `${item.error || ""} ${item.message || ""}`).join(" ").toLowerCase();
+    return /429|quota|rate.?limit|exhausted|resource_exhausted|insufficient_quota|out of credits|overloaded|capacity|额度超限|频率限制|配额不足/i.test(errorText);
+  }
 
-  return /429|quota|rate.?limit|exhausted|resource_exhausted|insufficient_quota|out of credits|overloaded|capacity|额度已耗尽|额度超限|频率限制|配额不足/i.test(combined);
+  const errorText = `${outcome.error?.code || ""} ${outcome.error?.message || ""}`.toLowerCase();
+  return /429|quota|rate.?limit|exhausted|resource_exhausted|insufficient_quota|out of credits|overloaded|capacity|额度超限|频率限制|配额不足/i.test(errorText);
 }
 
 export function detectExhaustedFamily(errorText: string, currentFamily?: Family): Family {
