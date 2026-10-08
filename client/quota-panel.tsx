@@ -19,7 +19,7 @@ const CHANNEL_TABS = [
 
 export function useQuota(hostId: string, family: Family | null, slot: string | null, all = false, enabled = true) {
   const rpc = useRpc(getQuota);
-  return useQuery({
+  return useQuery<QuotaSnapshot>({
     queryKey: ["tietiezhi", "quota", hostId, family, slot, all],
     queryFn: async ({ signal }) => {
       if (!family || family === "go") throw new Error("此渠道已停用");
@@ -29,7 +29,7 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
     },
     enabled: enabled && family !== null && family !== "go",
     staleTime: 60_000, gcTime: 30 * 60_000, retry: false,
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) => previousData?.family === family ? previousData : undefined,
     refetchInterval: enabled && family && family !== "go" ? 60_000 : false,
   });
 }
@@ -56,9 +56,10 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
   const queries = useQueryClient();
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const [loginOpen, setLoginOpen] = useState(false);
-  const data = quota.data
-    ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, true])
+  const cachedData = queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, true])
     ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
+  const data = (quota.data?.family === family ? quota.data : undefined)
+    ?? (cachedData?.family === family ? cachedData : undefined);
   const accountsSnapshot = queries.getQueryData<any>(["tietiezhi", "accounts", host.id]);
   const rows = accountsSnapshot?.accounts.filter((account: any) => account.family === family)
     ?? data?.snapshot.accounts.filter((account) => account.family === family)

@@ -23,33 +23,45 @@ function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claud
   return null;
 }
 
+function isElementVisible(el: Element): boolean {
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  if (typeof window === "undefined" || !window.getComputedStyle) return true;
+  const style = window.getComputedStyle(el);
+  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
 export function detectCurrentModelInfo(): { family: Family; pool?: "gemini" | "claude" } | null {
   if (typeof document === "undefined") return null;
 
   // 1. Look for visible combined-model-selector (both real Paseo and test mock have this testID!)
+  // Search bottom-to-top so active chat composer takes precedence
   const byTestId = Array.from(document.querySelectorAll(
     '[data-testid="combined-model-selector"], [data-testid="agent-controls-model"]'
-  )).find((el: any) => el.offsetParent !== null && el.getBoundingClientRect().height > 0);
+  )).filter(isElementVisible);
 
-  if (byTestId) {
-    const raw = (byTestId.getAttribute("aria-label") || "") + " " + (byTestId.textContent || "");
+  byTestId.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+  for (const el of byTestId) {
+    const raw = (el.getAttribute("aria-label") || "") + " " + (el.textContent || "");
     const parsed = parseModelText(raw);
     if (parsed) return parsed;
   }
 
   // 2. Visible button matching "选择模型（...）" or "Select model (...)" in active chat
-  const activeBtn = Array.from(document.querySelectorAll('button, [role="button"]'))
-    .find((b: any) => b.offsetParent !== null && b.getBoundingClientRect().height > 0 && /(?:选择模型|select model)[（(].+[）)]/i.test(b.getAttribute("aria-label") || ""));
+  const activeBtns = Array.from(document.querySelectorAll('button, [role="button"]'))
+    .filter((b) => isElementVisible(b) && /(?:选择模型|select model)[（(].+[）)]/i.test(b.getAttribute("aria-label") || ""));
 
-  if (activeBtn) {
-    const raw = (activeBtn.getAttribute("aria-label") || "") + " " + (activeBtn.textContent || "");
+  activeBtns.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+  for (const b of activeBtns) {
+    const raw = (b.getAttribute("aria-label") || "") + " " + (b.textContent || "");
     const parsed = parseModelText(raw);
     if (parsed) return parsed;
   }
 
   // 3. Fallback: look near the active textarea in composer
-  const textareas = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
-  const activeInput = textareas.find((el: any) => el.offsetParent !== null && el.getBoundingClientRect().height > 0);
+  const textareas = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]')).filter(isElementVisible);
+  textareas.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+  const activeInput = textareas[0];
   if (activeInput) {
     let container: Element | null = activeInput.parentElement;
     for (let depth = 0; depth < 5 && container; depth++) {
@@ -143,7 +155,9 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
     updatePersistentQuotas(quota.data.quotas, footerFamily, quota.data.currentAccountId);
   }
 
-  const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, true]);
+  const cachedData = queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, true]);
+  const data = (quota.data?.family === footerFamily ? quota.data : undefined)
+    ?? (cachedData?.family === footerFamily ? cachedData : undefined);
   const activeAccountId = data?.currentAccountId ?? activeAccountStore[footerFamily];
   const q = (activeAccountId ? data?.quotas.find((a: any) => a.accountId === activeAccountId) : undefined)
     ?? (activeAccountId ? persistentQuotaStore[activeAccountId] : undefined)

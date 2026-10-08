@@ -13,7 +13,17 @@ export default function contribute(server: PluginServerContext) {
   server.handle(startLogin, (input) => login.begin(input.family, input.confirmed));
   server.handle(loginStatus, (input) => login.status(input.id));
   server.handle(cancelLogin, (input) => login.cancel(input.id));
-  server.handle(getQuota, (input) => quotas.get(input, lifetime.signal));
+  server.handle(getQuota, async (input) => {
+    console.log("[TIETIEZHI RPC getQuota START]", JSON.stringify(input));
+    try {
+      const res = await quotas.get(input, lifetime.signal);
+      console.log("[TIETIEZHI RPC getQuota SUCCESS]", input.family, "quotas:", res.quotas.length);
+      return res;
+    } catch (err: any) {
+      console.error("[TIETIEZHI RPC getQuota ERROR]", input.family, err?.stack || err?.message || err);
+      throw err;
+    }
+  });
   // Resolve the daemon's configured Pi auth directory per request; configuration changes invalidate the revision.
   server.handle(listAccounts, () => new AccountService().list());
   server.handle(switchAccount, (input) => new AccountService().switch(input, lifetime.signal));
