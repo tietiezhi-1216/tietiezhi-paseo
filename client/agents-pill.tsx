@@ -490,7 +490,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
       setNavigationError(error instanceof Error ? error.message : "无法打开 Agent，请检查目标 Host 的连接。");
     }
   };
-  const compact = props.layout.platform !== "web";
+  const compact = props.layout.compact || props.layout.platform !== "web";
   const currentAgentId = "agentId" in props ? (props as any).agentId : "";
   const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
@@ -514,18 +514,20 @@ function AgentsPopover(props: PluginButtonContentProps) {
       curr = curr.parentElement;
     }
 
-    // Lock outer popover shell so outer panel never scrolls
-    let p = el.parentElement;
-    while (p) {
-      p.style.scrollbarWidth = "none";
-      p.style.msOverflowStyle = "none";
-      if (p.getAttribute("data-menu-surface") === "true" || p.classList?.contains("r-overflowY-eqz5dr")) {
-        p.style.overflow = "hidden";
-        p.style.overflowY = "hidden";
+    // Only lock the desktop floating menu surface, NEVER lock mobile sheet
+    if (!compact) {
+      let p = el.parentElement;
+      while (p) {
+        p.style.scrollbarWidth = "none";
+        p.style.msOverflowStyle = "none";
+        if (p.getAttribute("data-menu-surface") === "true") {
+          p.style.overflow = "hidden";
+          p.style.overflowY = "hidden";
+        }
+        p = p.parentElement;
       }
-      p = p.parentElement;
     }
-  }, []);
+  }, [compact]);
 
   return (
     <View
@@ -602,22 +604,30 @@ function AgentsPopover(props: PluginButtonContentProps) {
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 4 }}>{navigationError}</Text> : null}
       </View>
 
-      {/* 📜 2. 中间独立滚动区：卡片视口 (Scrollable Card Deck Viewport - ONLY this scrolls) */}
+      {/* 📜 2. 中间独立滚动区：卡片视口 (Scrollable Card Deck Viewport - Smooth on mobile & desktop) */}
       <ScrollView
+        nestedScrollEnabled={true}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        alwaysBounceVertical={true}
+        overScrollMode="always"
         {...({ className: "paseo-agents-list-scroll" } as any)}
         style={{
           flex: 1,
           minHeight: 0,
-          height: 285,
-          maxHeight: 295,
+          height: compact ? 360 : 285,
+          maxHeight: compact ? 400 : 295,
           backgroundColor: props.theme.colors.surface1,
+          touchAction: "pan-y" as any,
+          WebkitOverflowScrolling: "touch" as any,
         }}
         contentContainerStyle={{
           paddingHorizontal: 10,
           paddingTop: 9,
           paddingBottom: 9,
           gap: 8,
+          touchAction: "pan-y" as any,
         }}
       >
         <AgentActivity
