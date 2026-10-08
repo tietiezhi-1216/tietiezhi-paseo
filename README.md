@@ -1,8 +1,23 @@
 # tietiezhi
 
-Paseo 插件：**Pi 渠道额度/账号切换 + 多 Host Agent 管理**。当前版本 `0.1.0`。
+Paseo 统一插件：**模型额度与账号切换 · 活跃任务状态气泡 · 多 Host Agent 仪表盘**。当前版本 `0.1.0`。
 
-在同一个 Paseo App 中查看、搜索、打开不同设备的 Agent，并向指定 Agent 发送消息。直接借用 App 的已认证连接，支持 Paseo relay、Remote SSH、Tailscale 等运输方式，不要求设备在同一局域网。
+跨设备在桌面端（macOS/Windows/Linux）与移动端（iOS/Android）使用同一个插件，集成模型配额实时监控、多账号安全切换、输入框任务微徽标与轻量浮窗管理。
+
+## 一键安装命令
+
+在任意已安装 Paseo 的设备终端中直接运行：
+
+```bash
+paseo plugin install https://github.com/tietiezhi-1216/tietiezhi-paseo.git
+```
+
+重载与更新：
+```bash
+paseo plugin reload tietiezhi
+# 或在线更新
+paseo plugin update tietiezhi
+```
 
 ## 当前已实现
 
