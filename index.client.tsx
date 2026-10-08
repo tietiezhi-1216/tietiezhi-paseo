@@ -5,10 +5,13 @@ import { hexAlpha } from "./client/ui.tsx";
 import { DashboardScreen, AgentDashboard } from "./client/dashboard.tsx";
 import { AccountsPanel } from "./client/accounts.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
+import { ManagerEntry, ManagerScreen } from "./client/manager.tsx";
 import { contributeAgentsPills } from "./client/agents-pill.tsx";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
+    client.addScreen({ id: "manager", title: "铁铁汁", Component: ManagerScreen }),
+    client.addSidebarHeaderItem({ id: "manager", title: "铁铁汁", Component: ManagerEntry }),
     client.addScreen({ id: "dashboard", title: "tietiezhi", Component: DashboardScreen }),
     client.addSidebarFooterItem({ id: "footer-demo", title: "模型额度", Component: QuotaFooter }),
     client.addSettingsScreen({ id: "accounts", title: "账号切换", icon: "Users", Component: AccountsPanel }),
@@ -22,11 +25,11 @@ export default function contribute(client: PluginClientContext) {
     }),
     client.addCommandCenterItem({
       id: "dashboard",
-      title: "打开 tietiezhi 仪表盘",
+      title: "打开铁铁汁管理面板",
       icon: "PanelsTopLeft",
       context: "global",
       keywords: ["agents", "host", "账号", "远程"],
-      onSelect(context) { context.openScreen({ screenId: "dashboard" }); },
+      onSelect(context) { context.openScreen({ screenId: "manager" }); },
     }),
     client.addSlashCommand({
       name: "tietiezhi",

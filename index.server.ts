@@ -1,4 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { PiManager } from "./server/pi-manager.ts";
+import { piInventory, piPackageChange } from "./shared/pi-manager.ts";
 import { AccountService } from "./server/accounts.ts";
 import { listAccounts, switchAccount, deleteAccount } from "./shared/accounts.ts";
 import { getQuota } from "./shared/quota.ts";
@@ -12,6 +14,9 @@ import { agentActivity, agentReload, agentArchive, agentUnarchive } from "./shar
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
   const quotas = new QuotaService();
+  const pi = new PiManager();
+  server.handle(piInventory, () => pi.inventory(lifetime.signal));
+  server.handle(piPackageChange, (input) => pi.change(input, lifetime.signal));
   const login = new LoginService();
   server.handle(startLogin, (input) => login.begin(input.family, input.confirmed));
   server.handle(loginStatus, (input) => login.status(input.id));

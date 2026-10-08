@@ -3,6 +3,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import contribute from "../../index.client.tsx";
 import { DashboardScreen } from "../../client/dashboard.tsx";
+import { ManagerScreen } from "../../client/manager.tsx";
 import { Runtime, setTestRuntime } from "./sdk.jsx";
 
 const dark = {
@@ -101,6 +102,7 @@ function App() {
   const [quotaFailure, setQuotaFailure] = useState(false);
   const [quotaResetOffset, setQuotaResetOffset] = useState(3 * 3600000);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(false);
   const [, setPillTick] = useState(0);
   pillVersionTrigger = () => setPillTick((t) => t + 1);
 
@@ -112,6 +114,7 @@ function App() {
     offline: () => setHosts(hosts.map((h) => h.serverId === "remote" ? { ...h, status: "offline" } : h)),
     online: () => setHosts(hosts),
     selectHost: setHostId,
+    closeManager: () => setManagerOpen(false),
     light: () => setDark(false),
     selectModel: setAgentModel,
     quotaFailure: setQuotaFailure,
@@ -137,6 +140,13 @@ function App() {
   const runtime = {
     hosts: currentHosts, theme, layout, agentModel,
     async rpc(name, input) {
+      if (name === "pi.inventory") {
+        return { version: "1.0.0", revision: "a".repeat(64), packages: [{ source: "npm:pi-demo", name: "pi-demo", version: "0.1.0", managed: true }], localExtensions: ["model-list.ts"] };
+      }
+      if (name === "pi.package.change") {
+        calls.push({ kind: "pi-package-change", serverId: hostId, input });
+        return { inventory: { version: "1.0.0", revision: "a".repeat(64), packages: [], localExtensions: [] }, notice: "操作完成" };
+      }
       if (name.startsWith("tietiezhi.login.")) {
         calls.push({ kind: name, serverId: hostId, input });
         if (name.endsWith(".start")) {
@@ -201,7 +211,7 @@ function App() {
     theme,
     layout,
     currentScreen: null,
-    openScreen: (input) => calls.push({ kind: "open-screen", ...input }),
+    openScreen: (input) => { calls.push({ kind: "open-screen", ...input }); if (input.screenId === "manager") setManagerOpen(true); },
   };
 
   const currentPill = mountedPills[0];
@@ -232,9 +242,9 @@ function App() {
             <button data-testid="combined-model-selector" aria-label={`模型 · ${agentModel}`} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, background: theme.colors.surface1, color: theme.colors.foreground, border: `1px solid ${theme.colors.border}` }}>{agentModel}</button>
           </header>
           <div style={{ maxWidth: 1000, margin: "auto", height: "calc(100vh - 56px)" }}>
-            {pluginActive ? <DashboardScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }}
+            {pluginActive ? (managerOpen ? <ManagerScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }} theme={theme} layout={layout} params={{}} /> : <DashboardScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }}
               theme={theme} layout={layout} params={{}}
-              navigation={{ openAgent: (target) => calls.push({ kind: "navigate", ...target }) }} /> : null}
+              navigation={{ openAgent: (target) => calls.push({ kind: "navigate", ...target }) }} />) : null}
           </div>
         </main>
 

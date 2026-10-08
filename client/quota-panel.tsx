@@ -28,10 +28,9 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
       return result;
     },
     enabled: enabled && family !== null && family !== "go",
-    staleTime: 15_000, gcTime: 30 * 60_000, retry: false,
+    staleTime: 5 * 60_000, gcTime: 30 * 60_000, retry: false,
     placeholderData: (previousData) => previousData?.family === family ? previousData : undefined,
-    refetchInterval: enabled && family && family !== "go" ? 30_000 : false,
-    refetchOnWindowFocus: true,
+    refetchInterval: enabled && family && family !== "go" ? 5 * 60_000 : false,
   });
 }
 
