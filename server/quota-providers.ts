@@ -37,6 +37,20 @@ function getProxyAgent(): any {
   }
 }
 
+let cachedDispatcher: any = null;
+function getDispatcher(): any {
+  if (cachedDispatcher !== null) return cachedDispatcher;
+  const proxyUrl = resolveProxyUrl();
+  if (!proxyUrl) return undefined;
+  try {
+    const { ProxyAgent } = require("undici");
+    cachedDispatcher = new ProxyAgent(proxyUrl);
+    return cachedDispatcher;
+  } catch {
+    return undefined;
+  }
+}
+
 const GOOGLE_CLIENT_ID =
   process.env.ANTIGRAVITY_CLIENT_ID ||
   Buffer.from("MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlc" + "C5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==", "base64").toString();
@@ -46,6 +60,7 @@ const GOOGLE_CLIENT_SECRET =
 
 export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; expires: number } | null> {
   const agent = getProxyAgent();
+  const dispatcher = getDispatcher();
   try {
     const response = await fetcher("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -56,6 +71,7 @@ export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fet
         refresh_token: refresh,
         grant_type: "refresh_token",
       }),
+      ...(dispatcher ? { dispatcher } as any : {}),
       ...(agent ? { agent } as any : {}),
     });
     if (!response.ok) return null;
@@ -89,11 +105,13 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
 
   const request = async (url: string, init: RequestInit = {}) => {
     const agent = getProxyAgent();
+    const dispatcher = getDispatcher();
     const fetchInit: any = {
       ...init,
       redirect: "error",
       signal,
       headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
+      ...(dispatcher ? { dispatcher } : {}),
       ...(agent ? { agent } : {}),
     };
     let response = await fetcher(url, fetchInit);
@@ -103,7 +121,14 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
         token = refreshed.access;
         credential.access = refreshed.access;
         credential.expires = refreshed.expires;
-        response = await fetcher(url, { ...init, redirect: "error", signal, headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers } });
+        response = await fetcher(url, {
+          ...init,
+          redirect: "error",
+          signal,
+          headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
+          ...(dispatcher ? { dispatcher } : {}),
+          ...(agent ? { agent } : {}),
+        });
       }
     }
     if (!response.ok) throw new Error(response.status === 401 ? "授权已失效，请在 Pi 续期或重新登录" : "额度接口 HTTP " + response.status);

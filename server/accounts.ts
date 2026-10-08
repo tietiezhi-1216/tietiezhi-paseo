@@ -135,8 +135,8 @@ export class AccountService {
         credential: replace ? credential : existing.credential,
         plan: string(metadata.plan) ?? string(usage.plan) ?? existing?.plan ?? null,
         subscriptionExpiresAt: number(metadata.subscriptionExpiresAt) ?? existing?.subscriptionExpiresAt ?? null,
-        cachedUsage: metadata.usage ?? existing?.cachedUsage,
-        cachedAt: number(metadata.quotaFetchedAt) ?? existing?.cachedAt ?? null,
+        cachedUsage: metadata.cachedUsage ?? metadata.usage ?? existing?.cachedUsage,
+        cachedAt: number(metadata.cachedAt) ?? number(metadata.quotaFetchedAt) ?? existing?.cachedAt ?? null,
       });
     };
     const addSaved = (source: RecordValue, canonical: boolean) => {

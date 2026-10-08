@@ -1,8 +1,8 @@
 import type { AccountQuota } from "../shared/quota.ts";
 import type { Family } from "../shared/accounts.ts";
 
-const QUOTA_CACHE_KEY = "tietiezhi.quotas.cache.v4";
-const ACTIVE_ACCOUNT_CACHE_KEY = "tietiezhi.active.account.v4";
+const QUOTA_CACHE_KEY = "tietiezhi.quotas.cache.v5";
+const ACTIVE_ACCOUNT_CACHE_KEY = "tietiezhi.active.account.v5";
 
 export const persistentQuotaStore: Record<string, AccountQuota> = (() => {
   if (typeof localStorage === "undefined") return {};
