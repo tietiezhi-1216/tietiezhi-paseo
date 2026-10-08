@@ -602,9 +602,30 @@ function AgentsPopover(props: PluginButtonContentProps) {
   );
 }
 
-function formatSessionPill(_title: string, state: { label: string; colorKind: PillColorKind }): string {
-  if (state.label && state.label !== "loading") return state.label;
-  return "working";
+function truncateAgentTitle(title: string, maxChars = 6): string {
+  const clean = title?.trim() ?? "";
+  if (!clean) return "";
+  let width = 0;
+  let truncated = "";
+  const limit = maxChars * 2;
+  for (const char of clean) {
+    const charWidth = char.charCodeAt(0) > 127 ? 2 : 1;
+    if (width + charWidth > limit) {
+      return truncated + "…";
+    }
+    width += charWidth;
+    truncated += char;
+  }
+  return clean;
+}
+
+function formatSessionPill(title: string, state: { label: string; colorKind: PillColorKind }): string {
+  const shortTitle = truncateAgentTitle(title);
+  const status = state.label && state.label !== "loading" ? state.label : "working";
+  if (shortTitle) {
+    return `${shortTitle} · ${status}`;
+  }
+  return status;
 }
 
 export function contributeAgentsPills(client: PluginClientContext) {
@@ -660,7 +681,7 @@ export function contributeAgentsPills(client: PluginClientContext) {
       button: {
         title: "当前会话与 Agents",
         icon: AgentsStatusIcon,
-        label: formatSessionPill("", lastState),
+        label: formatSessionPill(agentTitle, lastState),
         behavior: { kind: "popover", Content: AgentsPopover },
       },
     });

@@ -64,8 +64,8 @@ const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
   const agent = getProxyAgent();
   const dispatcher = getDispatcher();
-  try {
-    const response = await fetcher(OPENAI_TOKEN_URL, {
+  const execute = async (useProxy: boolean) => {
+    return await fetcher(OPENAI_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -73,9 +73,18 @@ export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher 
         refresh_token: refresh,
         client_id: OPENAI_CLIENT_ID,
       }),
-      ...(dispatcher ? { dispatcher } as any : {}),
-      ...(agent ? { agent } as any : {}),
+      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
+      ...(useProxy && agent ? { agent } as any : {}),
     });
+  };
+  try {
+    let response;
+    try {
+      response = await execute(true);
+    } catch {
+      // If proxy connection failed (e.g. proxy port not listening on this device), fallback to direct connection
+      response = await execute(false);
+    }
     if (!response.ok) return null;
     const data = rec(await response.json());
     const access = text(data.access_token);
@@ -91,8 +100,8 @@ export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher 
 export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; expires: number } | null> {
   const agent = getProxyAgent();
   const dispatcher = getDispatcher();
-  try {
-    const response = await fetcher("https://oauth2.googleapis.com/token", {
+  const execute = async (useProxy: boolean) => {
+    return await fetcher("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -101,9 +110,18 @@ export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fet
         refresh_token: refresh,
         grant_type: "refresh_token",
       }),
-      ...(dispatcher ? { dispatcher } as any : {}),
-      ...(agent ? { agent } as any : {}),
+      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
+      ...(useProxy && agent ? { agent } as any : {}),
     });
+  };
+  try {
+    let response;
+    try {
+      response = await execute(true);
+    } catch {
+      // Fallback to direct connection if proxy failed on remote machine
+      response = await execute(false);
+    }
     if (!response.ok) return null;
     const data = rec(await response.json());
     const access = text(data.access_token);
@@ -155,7 +173,17 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
       ...(dispatcher ? { dispatcher } : {}),
       ...(agent ? { agent } : {}),
     };
-    let response = await fetcher(url, fetchInit);
+    let response: Response;
+    try {
+      response = await fetcher(url, fetchInit);
+    } catch (err) {
+      if (dispatcher || agent) {
+        // Fallback to direct connection if proxy fails on this machine
+        response = await fetcher(url, { ...init, redirect: "error", signal, headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers } });
+      } else {
+        throw err;
+      }
+    }
     if (response.status === 401) {
       if (family === "antigravity" && refreshToken) {
         const refreshed = await refreshGoogleToken(refreshToken, fetcher);
