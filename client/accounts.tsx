@@ -93,38 +93,20 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
 
   return (
     <View style={{ gap: 8 }}>
-      {!compact ? (
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{host.label}</Text>
-          <IconAction
-            theme={theme}
-            title="重新读取账号"
-            icon="RefreshCw"
-            disabled={!online || accounts.isFetching || mutation.isPending}
-            onPress={() => { setConfirmation(null); void accounts.refetch(); }}
-          />
-        </View>
-      ) : null}
       {!online && !compact ? <Notice theme={theme} text="离线 · 缓存" /> : null}
       {accounts.isPending && online ? <Loading theme={theme} /> : null}
       {accounts.isError ? <Notice theme={theme} error text={errorText(accounts.error)} /> : null}
-      {!compact && accounts.data?.warnings.length ? (
-        <Disclosure theme={theme} title={`提示 · ${accounts.data.warnings.length}`}>
-          {accounts.data.warnings.map((warning) => <Notice key={warning} theme={theme} text={warning} />)}
-        </Disclosure>
-      ) : null}
       {!compact && notice ? <Notice theme={theme} text={notice} /> : null}
       {mutation.isError ? <Notice theme={theme} error text={errorText(mutation.error)} /> : null}
       {deleteMutation.isError ? <Notice theme={theme} error text={errorText(deleteMutation.error)} /> : null}
 
       {confirmation && !compact ? (
-        <View testID="account-confirmation" style={{ padding: 10, gap: 7, borderWidth: 1, borderColor: theme.colors.statusWarning, borderRadius: 7 }}>
+        <View testID="account-confirmation" style={{ padding: 12, gap: 8, borderWidth: 1, borderColor: hexAlpha(theme.colors.accent, 0.4), backgroundColor: hexAlpha(theme.colors.accent, 0.05), borderRadius: 8 }}>
           <Text style={{ color: theme.colors.foreground, fontWeight: "600", fontSize: 13 }}>切换默认账号？</Text>
           <Text style={{ color: theme.colors.foreground, fontSize: 12 }}>
-            {host.label} · {FAMILY_LABELS[confirmation.account.family]} → {confirmation.account.label}
+            {FAMILY_LABELS[confirmation.account.family]} → {confirmation.account.label}
           </Text>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>保留备份 · 不重载会话；已有会话可能仍用原授权</Text>
-          <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
             <Action
               theme={theme}
               title={mutation.isPending ? "切换中…" : "确认切换"}
@@ -143,7 +125,7 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
           const rows = accounts.data?.accounts.filter((a) => a.family === family) ?? [];
           return (
             <View key={family} style={{ gap: 6 }}>
-              {!compact ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" }}>{FAMILY_LABELS[family]} · {rows.length}</Text> : null}
+              {!compact ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginTop: 10, marginBottom: 2 }}>{FAMILY_LABELS[family].toUpperCase()} · {rows.length}</Text> : null}
               {!rows.length && !accounts.isPending && !accounts.isError ? <Notice theme={theme} text="暂无账号" /> : null}
               {rows.map((account) => {
                 const selected = account.active;
@@ -154,12 +136,12 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
                     testID={compact ? "quota-account-card" : `account-${account.id}`}
                     style={{
                       paddingVertical: compact ? 9 : 10,
-                      paddingHorizontal: compact ? 10 : 12,
-                      gap: 5,
+                      paddingHorizontal: compact ? 10 : 14,
+                      gap: 4,
                       borderRadius: 8,
-                      backgroundColor: selected ? hexAlpha(theme.colors.foreground, 0.06) : hexAlpha(theme.colors.foreground, 0.02),
+                      backgroundColor: selected ? hexAlpha(theme.colors.accent, 0.06) : theme.colors.surface1,
                       borderWidth: 1,
-                      borderColor: selected ? (compact ? hexAlpha(theme.colors.foreground, 0.16) : theme.colors.accent) : hexAlpha(theme.colors.border, 0.6),
+                      borderColor: selected ? hexAlpha(theme.colors.accent, 0.35) : hexAlpha(theme.colors.border, 0.6),
                     }}
                   >
                     <Pressable
@@ -199,19 +181,14 @@ function HostAccounts({ theme, host, family: filterFamily, compact = false, rend
                     {renderDetails ? (
                       renderDetails(account)
                     ) : (
-                      <>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-                          {[account.plan, account.authType].filter(Boolean).join(" · ")}
+                          {[account.slot, account.authType].filter(Boolean).join(" · ")}
                         </Text>
                         {account.expiresAt !== null && account.expiresAt <= Date.now() ? (
-                          <Text style={{ color: theme.colors.statusWarning, fontSize: 11 }}>授权已过期</Text>
+                          <Text style={{ color: theme.colors.statusDanger, fontSize: 11, fontWeight: "500" }}>授权已过期</Text>
                         ) : null}
-                        <Disclosure theme={theme} testID="account-details">
-                          <Notice theme={theme} text={`槽位：${account.slot}`} />
-                          {account.expiresAt !== null ? <Notice theme={theme} text={`授权：${compactTime(account.expiresAt)}`} /> : null}
-                          {account.subscriptionExpiresAt !== null ? <Notice theme={theme} text={`订阅：${compactTime(account.subscriptionExpiresAt)} · 缓存`} /> : null}
-                        </Disclosure>
-                      </>
+                      </View>
                     )}
 
                     {isPendingSwitch && compact ? (
