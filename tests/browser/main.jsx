@@ -128,7 +128,7 @@ function App() {
       void queries.invalidateQueries({ queryKey: ["tietiezhi", "accounts", "local"] });
       void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", "local", family] });
     },
-    refreshPanelQuota: () => queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", hostId, "codex", null, true] }),
+    refreshPanelQuota: () => queries.refetchQueries({ queryKey: ["tietiezhi", "quota", hostId, "codex"] }),
     sidebarItems: () => ({ header: slots.header.map((item) => item.id), footer: slots.footer.map((item) => item.id) }),
     stopPlugin: async () => { await stopRegistrations(); setPluginActive(false); },
   };

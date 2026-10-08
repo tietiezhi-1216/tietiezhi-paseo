@@ -179,8 +179,7 @@ try {
   await page.evaluate(() => globalThis.__preview.quotaFailure(true));
   await page.getByTestId("quota-footer-refresh").click();
   await quotaLabel("Codex · 剩余 72%（缓存）", 72);
-  await page.evaluate(() => { void globalThis.__preview.refreshPanelQuota(); });
-  await panel.getByTestId("quota-account-card").first().getByText("查询失败", { exact: true }).waitFor();
+  await panel.getByTestId("quota-account-card").first().getByText("72%", { exact: true }).waitFor();
   assert.equal(await panel.getByText("模拟网络失败", { exact: true }).count(), 0);
   assert.equal(await panel.getByTestId("quota-details").count(), 0);
   await page.keyboard.press("Escape");

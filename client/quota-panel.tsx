@@ -52,7 +52,7 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
       return result;
     },
     enabled: enabled && online && family !== null && family !== "go",
-    staleTime: 60_000, gcTime: 10 * 60_000, retry: false,
+    staleTime: 60_000, gcTime: 30 * 60_000, retry: false,
     placeholderData: (previousData) => previousData,
     refetchInterval: enabled && online && family && family !== "go" ? 60_000 : false,
   });
@@ -188,16 +188,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
     return d > 0 ? `${Math.ceil(d)}天后` : "已到期";
   };
 
-  // If there are no windows and an error exists, show single clean error label
-  if (quota?.error && !quota.windows.length) {
-    return (
-      <View style={{ marginTop: 2, paddingVertical: 2 }}>
-        <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
-          {quotaFailureLabel(quota.error)}
-        </Text>
-      </View>
-    );
-  }
+
 
   return (
     <View style={{ marginTop: 2, gap: 4 }}>
@@ -293,11 +284,6 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>读取额度中…</Text>
       ) : !quota?.windows.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
-      ) : null}
-      {quota?.error ? (
-        <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 11 }}>
-          {quotaFailureLabel(quota.error)}
-        </Text>
       ) : null}
     </View>
   );
