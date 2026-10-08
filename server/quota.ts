@@ -62,6 +62,9 @@ export class QuotaService {
       if (account.credential.access !== tokenBefore) {
         void this.accounts().updateCredential(account.id, account.credential).catch(() => {});
       }
+      if (quota.windows.length > 0) {
+        void this.accounts().updateAccountUsage(account.id, { windows: quota.windows, plan: quota.plan, fetchedAt: this.now() }).catch(() => {});
+      }
       return { accountId: account.id, ...quota, fetchedAt: this.now(), checkedAt: this.now(), stale: false, error: null };
     } catch (error) {
       return {

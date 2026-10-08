@@ -317,6 +317,22 @@ export class AccountService {
     } catch {}
   }
 
+  async updateAccountUsage(id: string, quota: { windows: readonly unknown[]; plan: string | null; fetchedAt: number }): Promise<void> {
+    try {
+      const registry = await this.registry();
+      const target = registry.accounts.find((a) => a.id === id);
+      if (!target) return;
+      target.plan = quota.plan ?? target.plan;
+      target.cachedAt = quota.fetchedAt;
+      target.cachedUsage = {
+        account: target.label,
+        plan: target.plan,
+        windows: quota.windows,
+      };
+      await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: registry.accounts });
+    } catch {}
+  }
+
   async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
     let release: (() => Promise<void>) | undefined;
     try {

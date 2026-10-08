@@ -18,7 +18,7 @@ const CHANNEL_TABS = [
 
 const persistentQuotaStore: Record<string, AccountQuota> = (() => {
   try {
-    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v2") || "{}");
+    return JSON.parse(localStorage.getItem("tietiezhi.quotas.cache.v3") || "{}");
   } catch {
     return {};
   }
@@ -35,7 +35,7 @@ function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined) {
   }
   if (changed) {
     try {
-      localStorage.setItem("tietiezhi.quotas.cache.v2", JSON.stringify(persistentQuotaStore));
+      localStorage.setItem("tietiezhi.quotas.cache.v3", JSON.stringify(persistentQuotaStore));
     } catch {}
   }
 }
