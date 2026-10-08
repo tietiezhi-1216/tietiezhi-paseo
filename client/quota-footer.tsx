@@ -163,7 +163,7 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
         </View>)}
       </Pressable>
     </View>
-    <Modal title="模型额度" icon={<VendorMark family={panelFamily} size={18} />} open={open} onOpenChange={(val) => { setOpen(val); if (!val) setBrowsedFamily(null); }}>
+    <Modal title={`模型额度 · ${host.label}`} icon={<VendorMark family={panelFamily} size={18} />} open={open} onOpenChange={(val) => { setOpen(val); if (!val) setBrowsedFamily(null); }}>
       <Modal.Content scrollable={false} style={{ backgroundColor: theme.colors.surface0 }} contentContainerStyle={{ padding: 16, gap: 10, flex: 1 }}>
         <QuotaPanel {...props} family={panelFamily} onFamilyChange={onPanelFamilyChange} />
       </Modal.Content>

@@ -29,7 +29,7 @@ try {
   assert.equal(await page.getByTestId("agent-row").count(), 2);
   assert.deepEqual(await page.evaluate(() => globalThis.__preview.sidebarItems()), { header: [], footer: ["footer-demo"] });
   const footer = page.getByTestId("quota-footer-trigger");
-  const panel = page.getByRole("dialog", { name: "模型额度", exact: true });
+  const panel = page.getByRole("dialog", { name: /^模型额度/ });
   assert.equal(await page.evaluate(() => globalThis.__preview.pillRegistrations()), 0);
   assert.equal(await page.getByTestId("composer-quota-pill").count(), 0);
   async function quotaLabel(label, value) {
