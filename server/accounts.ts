@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import lockfile from "proper-lockfile";
-import { FAMILY_LABELS, LIVE_SLOTS, familyOfSlot, type AccountSnapshot, type Family } from "../shared/accounts.ts";
+import { FAMILY_LABELS, LIVE_SLOTS, familyOfSlot, type Account, type AccountSnapshot, type Family } from "../shared/accounts.ts";
 
 type RecordValue = Record<string, unknown>;
 type Candidate = {
@@ -253,6 +253,30 @@ export class AccountService {
       const owned = names.filter((name) => new RegExp(`^\\d{13}-[a-f0-9]{16}-${kind}\\.json$`).test(name)).sort().reverse();
       for (const name of owned.slice(10)) await rm(join(this.paths.backups, name));
     }
+  }
+
+  async autoSwitchNextAccount(family: Family): Promise<{ previous: Account; next: Account } | null> {
+    const registry = await this.registry();
+    const familyAccounts = registry.snapshot.accounts.filter((a) => a.family === family && a.canSwitch);
+    if (familyAccounts.length <= 1) return null;
+    const currentActive = familyAccounts.find((a) => a.active) ?? familyAccounts[0];
+    const candidates = familyAccounts.filter((a) => a.id !== currentActive.id);
+    if (!candidates.length) return null;
+
+    const candFull = candidates.map((c) => ({
+      account: c,
+      target: registry.accounts.find((a) => a.id === c.id),
+    }));
+
+    candFull.sort((a, b) => {
+      const aUsed = (a.target?.cachedUsage as any)?.primary?.usedPercent ?? (a.target?.cachedUsage as any)?.windows?.[0]?.usedPercent ?? 0;
+      const bUsed = (b.target?.cachedUsage as any)?.primary?.usedPercent ?? (b.target?.cachedUsage as any)?.windows?.[0]?.usedPercent ?? 0;
+      return aUsed - bUsed;
+    });
+
+    const nextAccount = candFull[0].account;
+    await this.switch({ id: nextAccount.id, revision: registry.snapshot.revision, confirmed: true });
+    return { previous: currentActive, next: nextAccount };
   }
 
   async switch(input: { id: string; revision: string; confirmed: true }, signal?: AbortSignal) {

@@ -6,6 +6,7 @@ import { QuotaService } from "./server/quota.ts";
 import { LoginService } from "./server/login.ts";
 import { startLogin, loginStatus, cancelLogin } from "./shared/login.ts";
 import { handleAgentActivity, reloadRemoteAgent, closeRemoteAgentClients } from "./server/agents.ts";
+import { handleAgentTurnEnded } from "./server/auto-switch.ts";
 import { agentActivity, agentReload } from "./shared/agents.ts";
 
 export default function contribute(server: PluginServerContext) {
@@ -32,6 +33,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(deleteAccount, (input) => new AccountService().delete(input, lifetime.signal));
   server.handle(agentActivity, (input) => handleAgentActivity(input));
   server.handle(agentReload, (input) => reloadRemoteAgent(input));
+  server.on("agent.turn_ended", (event, context) => handleAgentTurnEnded(event, context));
   return async () => {
     lifetime.abort();
     await login.dispose();

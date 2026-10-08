@@ -1,4 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { Text, View } from "react-native";
+import { z } from "zod";
+import { hexAlpha } from "./client/ui.tsx";
 import { DashboardScreen, AgentDashboard } from "./client/dashboard.tsx";
 import { AccountsPanel } from "./client/accounts.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
@@ -34,6 +37,29 @@ export default function contribute(client: PluginClientContext) {
         const tab = context.args.trim();
         context.openScreen({ screenId: "dashboard", params: { tab: tab === "accounts" || tab === "hosts" ? tab : "agents" } });
       },
+    }),
+    client.addTimelineRenderer({
+      kind: "quota-notice",
+      version: 1,
+      schema: z.object({ message: z.string() }),
+      Component: ({ item, theme }) => (
+        <View style={{
+          paddingVertical: 7,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: hexAlpha(theme.colors.accent, 0.1),
+          borderWidth: 1,
+          borderColor: hexAlpha(theme.colors.accent, 0.25),
+          marginVertical: 4,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "500", lineHeight: 18 }}>
+            ⓘ {item.data.message}
+          </Text>
+        </View>
+      ),
     }),
   ];
   const stopPills = contributeAgentsPills(client);
