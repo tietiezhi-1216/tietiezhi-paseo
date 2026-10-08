@@ -62,7 +62,6 @@ let pillVersionTrigger = () => {};
 
 const stopRegistrations = contribute({
   addComposerPill: (pill) => {
-    throw new Error("不得注册 Composer 胶囊");
     pillRegistrations++;
     const pillState = { ...pill };
     mountedPills.push(pillState);
@@ -175,6 +174,14 @@ function App() {
         };
       }
       if (name.endsWith(".list")) return structuredClone(snapshots[hostId]);
+      if (name === "slotgame.agent.activity") {
+        calls.push({ kind: "agent-activity", serverId: hostId, input });
+        return { agents: [], hosts: [], fetchedAt: new Date().toISOString() };
+      }
+      if (name === "slotgame.agent.reload") {
+        calls.push({ kind: "agent-reload", serverId: hostId, input });
+        return { agentId: input.agentId, hostId: input.hostId };
+      }
       calls.push({ kind: "switch", serverId: hostId, input });
       snapshots[hostId] = { ...snapshots[hostId], revision: "c".repeat(64), accounts: snapshots[hostId].accounts.map((a) => ({ ...a, active: a.id === input.id })) };
       return { snapshot: structuredClone(snapshots[hostId]), backupCreated: true, notice: "测试切换成功" };
@@ -229,7 +236,7 @@ function App() {
             display: "flex", alignItems: "center", gap: 8,
           }}>
             <button
-              data-testid="composer-quota-pill"
+              data-testid="composer-agents-pill"
               onClick={() => setPopoverOpen(!popoverOpen)}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
@@ -243,7 +250,7 @@ function App() {
             </button>
             {popoverOpen && ContentComp ? (
               <div
-                data-testid="composer-quota-popover"
+                data-testid="composer-agents-popover"
                 style={{
                   position: "absolute", bottom: 42, right: 0,
                   borderRadius: 10, border: `1px solid ${theme.colors.border}`,

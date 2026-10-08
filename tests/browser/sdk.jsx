@@ -10,6 +10,15 @@ export function useRpc(contract) {
   return (input) => runtime.rpc(contract.name, input);
 }
 export function useAgent(id, selector) { const runtime = useContext(Runtime); const agent = { id, workspaceId: "workspace-1", title: "Preview Agent", provider: "pi", model: runtime.agentModel ?? "openai-codex/gpt-5.5", status: "idle" }; return selector ? selector(agent) : agent; }
+export function usePaseo() {
+  return {
+    agents: {
+      list: async () => ({ entries: [], pageInfo: { hasMore: false, nextCursor: null } }),
+      subscribe: () => () => {},
+      ref: () => ({ refresh: async () => {} }),
+    },
+  };
+}
 export function Icon({ name, size, color }) { return <span aria-hidden="true" style={{ fontSize: size, color }}>◉</span>; }
 export function getPaseoClient(serverId) {
   const host = state.hosts.find((h) => h.serverId === serverId);

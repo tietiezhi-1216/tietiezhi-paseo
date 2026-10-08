@@ -2,6 +2,7 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { DashboardScreen, AgentDashboard } from "./client/dashboard.tsx";
 import { AccountsPanel } from "./client/accounts.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
+import { contributeAgentsPills } from "./client/agents-pill.tsx";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
@@ -35,7 +36,9 @@ export default function contribute(client: PluginClientContext) {
       },
     }),
   ];
+  const stopPills = contributeAgentsPills(client);
   return async () => {
+    if (typeof stopPills === "function") await stopPills();
     for (const stop of [...stops].reverse()) await stop();
   };
 }

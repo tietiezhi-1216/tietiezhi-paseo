@@ -30,8 +30,8 @@ try {
   assert.deepEqual(await page.evaluate(() => globalThis.__preview.sidebarItems()), { header: [], footer: ["footer-demo"] });
   const footer = page.getByTestId("quota-footer-trigger");
   const panel = page.getByRole("dialog", { name: /^模型额度/ });
-  assert.equal(await page.evaluate(() => globalThis.__preview.pillRegistrations()), 0);
-  assert.equal(await page.getByTestId("composer-quota-pill").count(), 0);
+  assert.equal(await page.evaluate(() => globalThis.__preview.pillRegistrations()), 1);
+  assert.equal(await page.getByTestId("composer-agents-pill").count(), 1);
   async function quotaLabel(label, value) {
     const vendor = label.split(" · ")[0];
     const expected = value === null ? `${vendor === "OpenCode Go" ? "Go" : vendor === "Antigravity" ? "AG" : vendor} · 未获取` : `${vendor} ${value}% · ${label.includes("缓存") ? "缓存 · " : ""}2 小时后重置`;
