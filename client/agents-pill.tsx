@@ -321,6 +321,15 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
 }
 
 const HIDE_SCROLLBAR_CSS = `
+/* 1. Lock outer popover shell so the outer panel NEVER scrolls */
+[data-menu-surface="true"],
+[data-menu-surface="true"] > div,
+[data-menu-surface="true"] > div > div {
+  overflow: hidden !important;
+  overflow-y: hidden !important;
+}
+
+/* 2. Completely eliminate all WebKit and Firefox scrollbars */
 ::-webkit-scrollbar,
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track,
@@ -337,6 +346,12 @@ const HIDE_SCROLLBAR_CSS = `
 * {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
+}
+
+/* 3. Re-enable scrolling ONLY on the middle agent list */
+.paseo-agents-list-scroll,
+.paseo-agents-list-scroll > div {
+  overflow-y: auto !important;
 }
 `;
 
@@ -413,27 +428,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
     injectScrollbarStyles();
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
-    try {
-      let curr = el;
-      const path: any[] = [];
-      while (curr && path.length < 8) {
-        path.push({
-          tag: curr.tagName,
-          className: curr.className,
-          style: curr.getAttribute("style"),
-          dataset: { ...curr.dataset },
-          overflowY: window.getComputedStyle(curr).overflowY,
-          clientHeight: curr.clientHeight,
-          scrollHeight: curr.scrollHeight,
-        });
-        curr = curr.parentElement;
-      }
-      console.log("[POPOVER DOM HIERARCHY]", JSON.stringify(path));
-    } catch {}
     let p = el.parentElement;
     while (p) {
       p.style.scrollbarWidth = "none";
       p.style.msOverflowStyle = "none";
+      if (p.getAttribute("data-menu-surface") === "true" || p.classList?.contains("r-overflowY-eqz5dr")) {
+        p.style.overflow = "hidden";
+        p.style.overflowY = "hidden";
+      }
       p = p.parentElement;
     }
   }, []);
@@ -444,13 +446,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        height: 410,
-        maxHeight: 410,
+        height: 390,
+        maxHeight: 390,
         display: "flex",
         flexDirection: "column",
-        paddingHorizontal: 6,
+        paddingHorizontal: 4,
         paddingTop: 2,
         boxSizing: "border-box" as any,
+        overflow: "hidden",
       }}
     >
       {/* 🔍 1. 顶部固定搜索栏 (Fixed Search Input at Top, NEVER scrolls) */}
@@ -487,8 +490,8 @@ function AgentsPopover(props: PluginButtonContentProps) {
       {/* 📜 2. 中间独立滚动区：Agent 列表 (ONLY the list in the middle scrolls) */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        {...({ className: "paseo-agents-scroll" } as any)}
-        style={{ flex: 1, minHeight: 0 }}
+        {...({ className: "paseo-agents-list-scroll" } as any)}
+        style={{ flex: 1, minHeight: 0, height: 300, maxHeight: 310 }}
         contentContainerStyle={{ gap: 10, paddingBottom: 6 }}
       >
         <AgentActivity
@@ -513,7 +516,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
           paddingBottom: 2,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
-          marginTop: 2,
+          marginTop: 4,
         }}
       >
         <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600", flex: 1 }}>
