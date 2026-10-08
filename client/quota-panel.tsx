@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, type Family } from "../shared/accounts.ts";
 import { getQuota, selectQuotaWindow, type AccountQuota, type QuotaSnapshot, type QuotaWindow } from "../shared/quota.ts";
 import { quotaGroups } from "../shared/quota-groups.ts";
-import { timeUntilReset, readableResetCountdown } from "../shared/quota-footer-label.ts";
+import { timeUntilReset, readableResetCountdown, rollForwardResetAt } from "../shared/quota-footer-label.ts";
 import { AccountsPanel } from "./accounts.tsx";
 import { Action, ChannelTabs, Notice, QuotaMeter, RemainingBar, hexAlpha } from "./ui.tsx";
 import { quotaFailureLabel, compactDateTime } from "../shared/ui-format.ts";
@@ -222,31 +222,34 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 {group.pool === "claude" && account.active ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>当前会话</Text> : null}
                 {group.pool === "gemini" && quota?.stale === false ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>刷新于 {compactDateTime(Date.now()).split(" ")[1]}</Text> : null}
               </View>
-              {group.windows.map((window, index) => (
-                <View
-                  key={window.id}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    minHeight: 22,
-                    paddingTop: index ? 6 : 0,
-                    borderTopWidth: index ? 1 : 0,
-                    borderTopColor: hexAlpha(theme.colors.border, 0.3),
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
-                    {window.resetAt ? (
-                      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
-                        {compactDateTime(window.resetAt)} ({timeUntilReset(window.resetAt, Date.now())})
-                      </Text>
-                    ) : null}
+              {group.windows.map((window, index) => {
+                const effectiveReset = rollForwardResetAt(window.resetAt, window.label, Date.now());
+                return (
+                  <View
+                    key={window.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      minHeight: 22,
+                      paddingTop: index ? 6 : 0,
+                      borderTopWidth: index ? 1 : 0,
+                      borderTopColor: hexAlpha(theme.colors.border, 0.3),
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
+                      {effectiveReset ? (
+                        <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
+                          {compactDateTime(effectiveReset)} ({timeUntilReset(effectiveReset, Date.now())})
+                        </Text>
+                      ) : null}
+                    </View>
+                    <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter={false} prefix="" textSize={12} />
                   </View>
-                  <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter={false} prefix="" textSize={12} />
-                </View>
-              ))}
+                );
+              })}
             </View>
           ))}
         </View>
@@ -266,11 +269,14 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
               ) : (
                 <View style={{ flex: 1 }} />
               )}
-              {window.resetAt ? (
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
-                  {compactDateTime(window.resetAt)} 重置 ({window.resetAt <= Date.now() ? "本期生效" : timeUntilReset(window.resetAt, Date.now())})
-                </Text>
-              ) : null}
+              {window.resetAt ? (() => {
+                const effectiveReset = rollForwardResetAt(window.resetAt, window.label, Date.now());
+                return (
+                  <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
+                    {compactDateTime(effectiveReset)} 重置 ({timeUntilReset(effectiveReset, Date.now())})
+                  </Text>
+                );
+              })() : null}
             </View>
           );
         })

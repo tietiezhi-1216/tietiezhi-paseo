@@ -5,7 +5,7 @@ import { Modal } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type Family } from "../shared/accounts.ts";
 import { type QuotaSnapshot, getQuota, selectQuotaWindow } from "../shared/quota.ts";
-import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
+import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel, rollForwardResetAt } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
 import { activeAccountStore, persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
@@ -171,12 +171,15 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
   const activeWindow = selectQuotaWindow(footerFamily, activePool, windows);
   const isAuthError = Boolean(q?.error && /授权已失效|401|登录|invalid_grant|unauthorized/i.test(q.error));
-  const isExpired = Boolean(activeWindow && activeWindow.resetAt != null && activeWindow.resetAt <= Date.now());
-  const meters = [{ name: "", window: isAuthError ? null : activeWindow }];
+  const effectiveWindow = activeWindow ? {
+    ...activeWindow,
+    resetAt: rollForwardResetAt(activeWindow.resetAt, activeWindow.label, Date.now()),
+  } : null;
+  const meters = [{ name: "", window: isAuthError ? null : effectiveWindow }];
   const time = isAuthError
     ? "需登录"
-    : activeWindow
-      ? (isExpired ? "本期生效" : naturalCountdown(activeWindow.resetAt, Date.now()))
+    : effectiveWindow?.resetAt
+      ? naturalCountdown(effectiveWindow.resetAt, Date.now())
       : quota.isFetching
         ? "读取中…"
         : "—";

@@ -43,6 +43,19 @@ export function naturalCountdown(resetAt: number | null | undefined, now: number
   return `${seconds}秒后`;
 }
 
+export function rollForwardResetAt(resetAt: number | null | undefined, label?: string, now = Date.now()): number | null {
+  if (resetAt == null || !Number.isFinite(resetAt)) return null;
+  if (resetAt > now) return resetAt;
+  const cycleMs = /5小时|5h/i.test(label ?? "")
+    ? 5 * 3600 * 1000
+    : /天|daily|24h/i.test(label ?? "")
+      ? 24 * 3600 * 1000
+      : 7 * 24 * 3600 * 1000;
+  const diff = now - resetAt;
+  const cycles = Math.floor(diff / cycleMs) + 1;
+  return resetAt + cycles * cycleMs;
+}
+
 export function absoluteFooterReset(resetAt: number | null | undefined, now: number): string {
   return naturalCountdown(resetAt, now);
 }
