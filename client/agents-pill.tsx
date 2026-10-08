@@ -502,16 +502,18 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const el = popoverRef.current;
     if (!el || typeof document === "undefined") return;
 
-    // Reset parent wrapper padding so popover fills the surface completely and footer is flush
-    let curr = el.parentElement;
-    while (curr && curr.getAttribute("data-menu-surface") !== "true") {
-      curr.style.setProperty("padding", "0px", "important");
-      curr.style.setProperty("padding-top", "0px", "important");
-      curr.style.setProperty("padding-bottom", "0px", "important");
-      curr.style.setProperty("padding-left", "0px", "important");
-      curr.style.setProperty("padding-right", "0px", "important");
-      curr.style.setProperty("gap", "0px", "important");
-      curr = curr.parentElement;
+    // Reset parent wrapper padding so popover fills the surface completely and footer is flush (desktop only)
+    if (!compact) {
+      let curr = el.parentElement;
+      while (curr && curr.getAttribute("data-menu-surface") !== "true") {
+        curr.style.setProperty("padding", "0px", "important");
+        curr.style.setProperty("padding-top", "0px", "important");
+        curr.style.setProperty("padding-bottom", "0px", "important");
+        curr.style.setProperty("padding-left", "0px", "important");
+        curr.style.setProperty("padding-right", "0px", "important");
+        curr.style.setProperty("gap", "0px", "important");
+        curr = curr.parentElement;
+      }
     }
 
     // Only lock the desktop floating menu surface, NEVER lock mobile sheet
@@ -539,7 +541,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
         flexDirection: "column",
         backgroundColor: props.theme.colors.surface1,
         boxSizing: "border-box" as any,
-        overflow: "hidden",
+        overflow: compact ? ("visible" as any) : "hidden",
       }}
     >
       {/* 🔒 1. 顶部固定搜索区 (Pinned Navigation Header - NEVER scrolls) */}
@@ -604,41 +606,54 @@ function AgentsPopover(props: PluginButtonContentProps) {
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 4 }}>{navigationError}</Text> : null}
       </View>
 
-      {/* 📜 2. 中间独立滚动区：卡片视口 (Scrollable Card Deck Viewport - Smooth on mobile & desktop) */}
-      <ScrollView
-        nestedScrollEnabled={true}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={true}
-        alwaysBounceVertical={true}
-        overScrollMode="always"
-        {...({ className: "paseo-agents-list-scroll" } as any)}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          height: compact ? 360 : 285,
-          maxHeight: compact ? 400 : 295,
-          backgroundColor: props.theme.colors.surface1,
-          touchAction: "pan-y" as any,
-          WebkitOverflowScrolling: "touch" as any,
-        }}
-        contentContainerStyle={{
-          paddingHorizontal: 10,
-          paddingTop: 9,
-          paddingBottom: 9,
-          gap: 8,
-          touchAction: "pan-y" as any,
-        }}
-      >
-        <AgentActivity
-          theme={props.theme}
-          compact={compact}
-          currentServerId={props.host.id}
-          hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
-          query={query}
-          onSelectAgent={selectAgent}
-        />
-      </ScrollView>
+      {/* 📜 2. 中间滚动区 (On mobile: native BottomSheetScrollView stream; on desktop: dedicated ScrollView) */}
+      {compact ? (
+        <View style={{ paddingHorizontal: 10, paddingTop: 9, paddingBottom: 12, gap: 8 }}>
+          <AgentActivity
+            theme={props.theme}
+            compact={compact}
+            currentServerId={props.host.id}
+            hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+            query={query}
+            onSelectAgent={selectAgent}
+          />
+        </View>
+      ) : (
+        <ScrollView
+          nestedScrollEnabled={true}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bounces={true}
+          alwaysBounceVertical={true}
+          overScrollMode="always"
+          {...({ className: "paseo-agents-list-scroll" } as any)}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            height: 285,
+            maxHeight: 295,
+            backgroundColor: props.theme.colors.surface1,
+            touchAction: "pan-y" as any,
+            WebkitOverflowScrolling: "touch" as any,
+          }}
+          contentContainerStyle={{
+            paddingHorizontal: 10,
+            paddingTop: 9,
+            paddingBottom: 9,
+            gap: 8,
+            touchAction: "pan-y" as any,
+          }}
+        >
+          <AgentActivity
+            theme={props.theme}
+            compact={compact}
+            currentServerId={props.host.id}
+            hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+            query={query}
+            onSelectAgent={selectAgent}
+          />
+        </ScrollView>
+      )}
 
       {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock - Flush at bottom) */}
       <View
