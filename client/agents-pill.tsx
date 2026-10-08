@@ -292,20 +292,51 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [reloadNote, setReloadNote] = useState<string | null>(null);
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    agent: RemoteAgent;
+    needsTarget?: boolean;
+    error?: string;
+  } | null>(null);
+  const [promptPassword, setPromptPassword] = useState("");
+  const [promptTarget, setPromptTarget] = useState("");
+  const [rememberPassword, setRememberPassword] = useState(true);
+  const [submittingPassword, setSubmittingPassword] = useState(false);
 
-  const reloadAgent = (agent: RemoteAgent) => {
+  const reloadAgent = (agent: RemoteAgent, customPassword?: string, customTarget?: string) => {
     if (reloadingId) return;
     setReloadingId(agent.id);
     setReloadNote(null);
-    reloadRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id })
+    reloadRpc({
+      hostId: agent.hostId,
+      serverId: agent.serverId,
+      agentId: agent.id,
+      password: customPassword,
+      target: customTarget,
+      savePassword: rememberPassword,
+    })
       .then(() => {
         setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已重载`);
+        setPasswordPrompt(null);
+        setPromptPassword("");
+        setPromptTarget("");
       })
       .catch((error: unknown) => {
-        setReloadNote(error instanceof Error ? error.message : "重载失败");
+        const msg = error instanceof Error ? error.message : String(error);
+        if (/PASSWORD_REQUIRED/i.test(msg) || /Password required/i.test(msg) || /密码/i.test(msg)) {
+          const needsTarget = /尚未配置连接密码与地址/i.test(msg);
+          setPasswordPrompt({
+            agent,
+            needsTarget,
+            error: customPassword ? "密码错误或连接失败，请重新输入" : undefined,
+          });
+          setReloadNote(null);
+        } else {
+          setReloadNote(msg);
+        }
       })
       .finally(() => {
         setReloadingId((current) => current === agent.id ? null : current);
+        setSubmittingPassword(false);
       });
   };
 
@@ -416,6 +447,132 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   return (
     <View style={{ gap: 8 }}>
       {reloadNote ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{reloadNote}</Text> : null}
+      {passwordPrompt ? (
+        <View
+          style={{
+            backgroundColor: theme.colors.surface1,
+            borderWidth: 1,
+            borderColor: theme.colors.accent,
+            borderRadius: 8,
+            padding: 10,
+            gap: 8,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>
+              🔐 需要主机密码 · {passwordPrompt.agent.name || passwordPrompt.agent.id.slice(0, 8)}
+            </Text>
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                setPasswordPrompt(null);
+                setPromptPassword("");
+                setPromptTarget("");
+              }}
+            >
+              <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>✕</Text>
+            </Pressable>
+          </View>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+            目标主机（{passwordPrompt.agent.hostName || passwordPrompt.agent.serverId || "远程设备"}）开启了密码认证：
+          </Text>
+          {passwordPrompt.needsTarget ? (
+            <TextInput
+              value={promptTarget}
+              onChangeText={setPromptTarget}
+              placeholder="主机地址 (如 ws://192.168.1.x:6767)"
+              placeholderTextColor={theme.colors.foregroundMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                color: theme.colors.foreground,
+                backgroundColor: theme.colors.surface2 ?? theme.colors.surface1,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                borderRadius: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                fontSize: 12,
+              } as any}
+            />
+          ) : null}
+          <TextInput
+            secureTextEntry
+            value={promptPassword}
+            onChangeText={setPromptPassword}
+            placeholder="请输入主机连接密码"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onSubmitEditing={() => {
+              if (promptPassword.trim() && !submittingPassword) {
+                setSubmittingPassword(true);
+                reloadAgent(passwordPrompt.agent, promptPassword.trim(), promptTarget.trim() || undefined);
+              }
+            }}
+            style={{
+              color: theme.colors.foreground,
+              backgroundColor: theme.colors.surface2 ?? theme.colors.surface1,
+              borderWidth: 1,
+              borderColor: passwordPrompt.error ? theme.colors.statusDanger : theme.colors.border,
+              borderRadius: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              fontSize: 12,
+            } as any}
+          />
+          {passwordPrompt.error ? (
+            <Text style={{ color: theme.colors.statusDanger, fontSize: 11 }}>{passwordPrompt.error}</Text>
+          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 2 }}>
+            <Pressable
+              style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+              onPress={() => setRememberPassword(!rememberPassword)}
+            >
+              <Text style={{ color: rememberPassword ? theme.colors.accent : theme.colors.foregroundMuted, fontSize: 11 }}>
+                {rememberPassword ? "☑ 记住密码" : "☐ 记住密码"}
+              </Text>
+            </Pressable>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <Pressable
+                onPress={() => {
+                  setPasswordPrompt(null);
+                  setPromptPassword("");
+                  setPromptTarget("");
+                }}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 5,
+                  backgroundColor: theme.colors.border,
+                }}
+              >
+                <Text style={{ color: theme.colors.foreground, fontSize: 11 }}>取消</Text>
+              </Pressable>
+              <Pressable
+                disabled={submittingPassword || !promptPassword.trim()}
+                onPress={() => {
+                  if (promptPassword.trim() && !submittingPassword) {
+                    setSubmittingPassword(true);
+                    reloadAgent(passwordPrompt.agent, promptPassword.trim(), promptTarget.trim() || undefined);
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 5,
+                  backgroundColor: theme.colors.accent,
+                  opacity: submittingPassword || !promptPassword.trim() ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: theme.colors.surface1, fontSize: 11, fontWeight: "700" }}>
+                  {submittingPassword ? "重载中…" : "确认重载"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
       {owned.isPending && owned.agents.length === 0 ? <ActivityIndicator color={theme.colors.accent} /> : all.length === 0 ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{query.trim() ? "没有匹配的 Agent" : "No agents"}</Text> : (
         <>
           {section("error", error, theme.colors.statusDanger)}

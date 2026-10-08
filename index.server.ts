@@ -14,6 +14,7 @@ import { agentActivity, agentReload, agentArchive, agentUnarchive } from "./shar
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
   const quotas = new QuotaService();
+  quotas.startBackgroundPolling(lifetime.signal);
   const pi = new PiManager();
   server.handle(piInventory, () => pi.inventory(lifetime.signal));
   server.handle(piPackageChange, (input) => pi.change(input, lifetime.signal));
@@ -43,6 +44,7 @@ export default function contribute(server: PluginServerContext) {
   server.on("agent.turn_ended", (event, context) => handleAgentTurnEnded(event, context));
   return async () => {
     lifetime.abort();
+    quotas.stop();
     await login.dispose();
     await closeRemoteAgentClients();
   };

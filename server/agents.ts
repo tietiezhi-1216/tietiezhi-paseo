@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -163,6 +163,60 @@ async function readRemoteAgents() {
   };
 }
 
+function getLocalCredential(): string | undefined {
+  try {
+    const credPath = join(homedir(), ".paseo", "local-credential");
+    if (existsSync(credPath)) {
+      const token = readFileSync(credPath, "utf8").trim();
+      if (token) return token;
+    }
+  } catch {}
+  return undefined;
+}
+
+export function saveAgentHostConfig(hostUpdate: {
+  id: string;
+  name?: string;
+  target?: string;
+  password?: string;
+  serverId?: string | null;
+  workspace?: string;
+}) {
+  const primaryPath = join(homedir(), ".paseo", "tietiezhi-devices.json");
+  const configPath = AGENT_CONFIG_PATHS.find((path) => existsSync(path)) ?? primaryPath;
+  let hosts: Array<ReturnType<typeof configuredAgentHosts>[number]> = [];
+  if (existsSync(configPath)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(configPath, "utf8"));
+      if (Array.isArray(parsed)) {
+        hosts = parsed.map((item) => AgentHostSchema.parse(item));
+      }
+    } catch {}
+  }
+  const index = hosts.findIndex((h) => h.id === hostUpdate.id || (hostUpdate.serverId && h.serverId === hostUpdate.serverId));
+  if (index >= 0) {
+    hosts[index] = {
+      ...hosts[index],
+      ...(hostUpdate.name ? { name: hostUpdate.name } : {}),
+      ...(hostUpdate.target ? { target: hostUpdate.target } : {}),
+      ...(hostUpdate.password !== undefined ? { password: hostUpdate.password } : {}),
+      ...(hostUpdate.serverId ? { serverId: hostUpdate.serverId } : {}),
+      ...(hostUpdate.workspace ? { workspace: hostUpdate.workspace } : {}),
+    };
+  } else if (hostUpdate.target) {
+    hosts.push({
+      id: hostUpdate.id || hostUpdate.serverId || `host-${Date.now()}`,
+      name: hostUpdate.name || hostUpdate.id || "Remote Host",
+      target: hostUpdate.target,
+      password: hostUpdate.password ?? "",
+      serverId: hostUpdate.serverId || undefined,
+      workspace: hostUpdate.workspace,
+    });
+  }
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify(hosts, null, 2), "utf8");
+}
+
 function getLocalDaemonUrl(): string {
   try {
     const configPath = join(homedir(), ".paseo", "config.json");
@@ -177,9 +231,12 @@ function getLocalDaemonUrl(): string {
   return "ws://127.0.0.1:6767/ws";
 }
 
-async function getLocalDaemonClient(): Promise<DaemonClient> {
+async function getLocalDaemonClient(password?: string): Promise<DaemonClient> {
+  const localCred = getLocalCredential();
   const daemon = new DaemonClient({
     url: getLocalDaemonUrl(),
+    password: password || undefined,
+    localCredential: localCred ? () => localCred : undefined,
     clientId: `${AGENT_CLIENT_PREFIX}-local`,
     clientType: "cli",
     connectTimeoutMs: REMOTE_CLIENT_CONNECT_TIMEOUT_MS,
@@ -189,21 +246,59 @@ async function getLocalDaemonClient(): Promise<DaemonClient> {
   return daemon;
 }
 
-export async function reloadRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }) {
+export async function reloadRemoteAgent(input: {
+  hostId?: string;
+  serverId?: string | null;
+  agentId: string;
+  password?: string;
+  target?: string;
+  savePassword?: boolean;
+}) {
   const hosts = configuredAgentHosts();
-  const host = resolveReloadHost(hosts, input);
-  if (host) {
-    const entry = await ensureRemoteAgentClient(host);
-    await entry.daemon.refreshAgent(input.agentId);
-    agentCache = null;
-    return { agentId: input.agentId, hostId: host.id };
+  let host = resolveReloadHost(hosts, input);
+
+  if (!host && input.target) {
+    host = {
+      id: input.hostId || input.serverId || "custom-host",
+      name: input.hostId || "Remote Host",
+      target: input.target,
+      password: input.password ?? "",
+      serverId: input.serverId ?? undefined,
+    };
+  } else if (host && input.password !== undefined) {
+    host = { ...host, password: input.password };
   }
-  const daemon = await getLocalDaemonClient();
+
+  if (host) {
+    try {
+      const entry = await ensureRemoteAgentClient(host);
+      await entry.daemon.refreshAgent(input.agentId);
+      agentCache = null;
+      if (input.password !== undefined && input.savePassword !== false) {
+        saveAgentHostConfig(host);
+      }
+      return { agentId: input.agentId, hostId: host.id };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+        throw new Error("PASSWORD_REQUIRED: 目标主机需要密码或连接密码错误");
+      }
+      throw err;
+    }
+  }
+
+  const daemon = await getLocalDaemonClient(input.password);
   try {
     if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
-      throw new Error("目标是远程设备，尚未配置该设备的重载通道；不会回退到本机。");
+      throw new Error("PASSWORD_REQUIRED: 目标是远程设备，尚未配置连接密码与地址");
     }
     await daemon.refreshAgent(input.agentId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+      throw new Error("PASSWORD_REQUIRED: 本机 Daemon 需要连接凭据或密码");
+    }
+    throw err;
   } finally {
     await daemon.close().catch(() => {});
   }

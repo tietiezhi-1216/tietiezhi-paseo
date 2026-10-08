@@ -10,8 +10,45 @@ export class QuotaService {
   private readonly accounts: () => AccountService;
   private readonly fetcher: Fetcher;
   private readonly now: () => number;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
+
   constructor(accounts: () => AccountService = () => new AccountService(), fetcher: Fetcher = fetch, now: () => number = Date.now) {
     this.accounts = accounts; this.fetcher = fetcher; this.now = now;
+  }
+
+  startBackgroundPolling(signal?: AbortSignal) {
+    if (this.pollTimer || this.stopped) return;
+    const pollAll = async () => {
+      if (this.stopped || signal?.aborted) return;
+      try {
+        const families: Family[] = ["codex", "antigravity", "xai"];
+        for (const family of families) {
+          if (this.stopped || signal?.aborted) break;
+          try {
+            await this.get({ family, all: true, refresh: true }, signal);
+          } catch {}
+        }
+      } catch {}
+    };
+
+    // Warm-up poll after 3 seconds on launch
+    const initialTimer = setTimeout(() => { void pollAll(); }, 3_000);
+    // True 5-minute background loop across ALL accounts in ALL channels
+    this.pollTimer = setInterval(() => { void pollAll(); }, 5 * 60_000);
+
+    signal?.addEventListener("abort", () => {
+      this.stopped = true;
+      clearTimeout(initialTimer);
+      if (this.pollTimer) clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    });
+  }
+
+  stop() {
+    this.stopped = true;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
   async get(input: { family: Family; slot?: string | null; all?: boolean; refresh?: boolean }, signal?: AbortSignal): Promise<QuotaSnapshot> {
 

@@ -87,6 +87,9 @@ test("the agents popover reuses the pill query so the first open is already popu
   assert.doesNotMatch(client, /kind: "menu"/);
   assert.match(client, /autoFocus/);
   assert.match(client, /搜索 Agent \/ 工作区 \/ ID/);
+  assert.match(client, /需要主机密码/);
+  assert.match(client, /请输入主机连接密码/);
+  assert.match(client, /确认重载/);
 });
 
 test("agents pills observe future agents and release the directory subscription", () => {
@@ -126,3 +129,18 @@ test("owned device agents win over borrowed snapshots", () => {
   const sameIdOtherHost = { ...other, id: local.id };
   assert.equal(combineOwnedAgents([local], [sameIdOtherHost, sameIdOtherHost], "srv80").length, 2);
 });
+
+test("agentReload supports password, target and savePassword", async () => {
+  const { agentReload } = await import("../shared/agents.ts");
+  const parsed = agentReload.input.parse({
+    agentId: "agent-123",
+    password: "secret-token",
+    target: "ws://192.168.1.50:6767",
+    savePassword: true,
+  });
+  assert.equal(parsed.agentId, "agent-123");
+  assert.equal(parsed.password, "secret-token");
+  assert.equal(parsed.target, "ws://192.168.1.50:6767");
+  assert.equal(parsed.savePassword, true);
+});
+
