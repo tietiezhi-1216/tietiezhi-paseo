@@ -425,13 +425,15 @@ function AgentsPopover(props: PluginButtonContentProps) {
     <View
       ref={popoverRef}
       style={{
+        alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
-        width: compact ? 280 : 360,
         height: 410,
         maxHeight: 410,
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        paddingHorizontal: 6,
+        paddingTop: 2,
+        boxSizing: "border-box" as any,
       }}
     >
       {/* 🔒 1. 顶部绝对固定区：标题 + 复制 ID + 搜索输入框 (Completely outside ScrollView, NEVER scrolls) */}
