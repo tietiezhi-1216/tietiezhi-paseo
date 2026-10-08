@@ -181,7 +181,7 @@ export const RemoteAgentSchema = z.object({
   parentAgentId: z.string().nullable(),
 });
 export type RemoteAgent = z.infer<typeof RemoteAgentSchema>;
-export type AgentDisplaySection = "error" | "working" | "done" | "idle" | "closed";
+export type AgentDisplaySection = "error" | "working" | "done" | "idle" | "closed" | "archived";
 
 export function agentMatchesQuery(
   agent: Pick<RemoteAgent, "id" | "name" | "hostName" | "hostId">,
@@ -202,6 +202,10 @@ export function isListedAgent(agent: { archivedAt?: string | null; parentAgentId
   return !agent.archivedAt && !agent.parentAgentId;
 }
 
+export function isDisplayableAgent(agent: { parentAgentId?: string | null }): boolean {
+  return !agent.parentAgentId;
+}
+
 export function mergeAgentSnapshot<T extends { attentionReason?: "finished" | "error" | "permission" | null; status?: string | null }>(base: T, live?: Partial<T>): T {
   if (!live) return base;
   const merged = { ...base, ...live };
@@ -216,17 +220,18 @@ export function agentActivityAt(agent: { lastUserMessageAt?: string | null; crea
 }
 
 export function combineOwnedAgents(owned: RemoteAgent[], borrowed: RemoteAgent[], currentServerId?: string | null): RemoteAgent[] {
-  const ownedListed = owned.filter((agent) => isListedAgent(agent));
+  const ownedListed = owned.filter((agent) => isDisplayableAgent(agent));
   const ownedIds = new Set(ownedListed.map((agent) => agent.id));
   return [
     ...ownedListed,
-    ...borrowed.filter((agent) => isListedAgent(agent) && !ownedIds.has(agent.id) && !isAgentOnServer(agent, currentServerId)),
+    ...borrowed.filter((agent) => isDisplayableAgent(agent) && !ownedIds.has(agent.id) && !isAgentOnServer(agent, currentServerId)),
   ];
 }
 
 export function agentDisplaySection(
   agent: Pick<RemoteAgent, "status" | "attentionReason" | "archivedAt">,
 ): AgentDisplaySection | null {
+  if (agent.archivedAt) return "archived";
   if (!isListedAgent(agent)) return null;
   if (agent.status === "error") return "error";
   if (agent.status === "running" || agent.status === "initializing") return "working";
@@ -260,6 +265,32 @@ export const agentReload = defineRpc({
   output: z.object({
     agentId: z.string(),
     hostId: z.string(),
+  }),
+});
+
+export const agentArchive = defineRpc({
+  name: "slotgame.agent.archive",
+  input: z.object({
+    hostId: z.string().default(""),
+    serverId: z.string().nullable().optional(),
+    agentId: z.string().min(1),
+  }),
+  output: z.object({
+    agentId: z.string(),
+    archived: z.boolean(),
+  }),
+});
+
+export const agentUnarchive = defineRpc({
+  name: "slotgame.agent.unarchive",
+  input: z.object({
+    hostId: z.string().default(""),
+    serverId: z.string().nullable().optional(),
+    agentId: z.string().min(1),
+  }),
+  output: z.object({
+    agentId: z.string(),
+    unarchived: z.boolean(),
   }),
 });
 

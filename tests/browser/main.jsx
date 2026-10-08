@@ -182,6 +182,14 @@ function App() {
         calls.push({ kind: "agent-reload", serverId: hostId, input });
         return { agentId: input.agentId, hostId: input.hostId };
       }
+      if (name === "slotgame.agent.archive") {
+        calls.push({ kind: "agent-archive", serverId: hostId, input });
+        return { agentId: input.agentId, archived: true };
+      }
+      if (name === "slotgame.agent.unarchive") {
+        calls.push({ kind: "agent-unarchive", serverId: hostId, input });
+        return { agentId: input.agentId, unarchived: true };
+      }
       calls.push({ kind: "switch", serverId: hostId, input });
       snapshots[hostId] = { ...snapshots[hostId], revision: "c".repeat(64), accounts: snapshots[hostId].accounts.map((a) => ({ ...a, active: a.id === input.id })) };
       return { snapshot: structuredClone(snapshots[hostId]), backupCreated: true, notice: "测试切换成功" };

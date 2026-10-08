@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { AgentHostSchema, isListedAgent, parentAgentIdFromLabels, resolveHostServerId, resolveReloadHost } from "../shared/agents.ts";
+import { AgentHostSchema, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, resolveHostServerId, resolveReloadHost } from "../shared/agents.ts";
 
 const AGENT_CACHE_MS = 15_000;
 const AGENT_CONFIG_PATHS = [
@@ -123,7 +123,7 @@ async function readRemoteAgents() {
     try {
       entry = await ensureRemoteAgentClient(host);
       const serverId = resolveHostServerId(entry.daemon.getLastServerInfoMessage()?.serverId, host.serverId);
-      const listed = await entry.client.agents.list({ scope: "active", filter: { includeArchived: false } });
+      const listed = await entry.client.agents.list({ scope: "active", filter: { includeArchived: true } });
       const agents = listed.entries.map(({ agent, project }) => ({
         hostId: host.id,
         hostName: host.name,
@@ -140,7 +140,7 @@ async function readRemoteAgents() {
         workspace: project.workspaceName ?? host.workspace ?? null,
         archivedAt: agent.archivedAt ?? null,
         parentAgentId: parentAgentIdFromLabels(agent.labels),
-      } satisfies RemoteAgentResult)).filter(isListedAgent);
+      } satisfies RemoteAgentResult)).filter(isDisplayableAgent);
       lastAgentsByHost.set(host.id, { agents, serverId });
       return { agents, online: true, serverId };
     } catch {
@@ -169,6 +169,32 @@ export async function reloadRemoteAgent(input: { hostId: string; serverId?: stri
   await entry.client.agents.ref(input.agentId).refresh();
   agentCache = null;
   return { agentId: input.agentId, hostId: host.id };
+}
+
+export async function archiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
+  const hosts = configuredAgentHosts();
+  const host = resolveReloadHost(hosts, input);
+  if (host) {
+    const entry = await ensureRemoteAgentClient(host);
+    await entry.client.agents.ref(input.agentId).archive();
+  } else if (localPaseo) {
+    await localPaseo.agents.ref(input.agentId).archive();
+  }
+  agentCache = null;
+  return { agentId: input.agentId, archived: true };
+}
+
+export async function unarchiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
+  const hosts = configuredAgentHosts();
+  const host = resolveReloadHost(hosts, input);
+  if (host) {
+    const entry = await ensureRemoteAgentClient(host);
+    await entry.client.agents.ref(input.agentId).refresh();
+  } else if (localPaseo) {
+    await localPaseo.agents.ref(input.agentId).refresh();
+  }
+  agentCache = null;
+  return { agentId: input.agentId, unarchived: true };
 }
 
 export async function closeRemoteAgentClients(): Promise<void> {

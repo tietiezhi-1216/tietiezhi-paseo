@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Te
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { AGENT_ACTIVITY_QUERY_KEY, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { dispatchWebAgentTarget, watchWebPopoverDismiss } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -102,13 +102,13 @@ async function listLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: strin
   const rows: RemoteAgent[] = [];
   let cursor: string | undefined;
   do {
-    const page = await paseo.agents.list({ scope: "active", page: { limit: 200, cursor }, filter: { includeArchived: false } });
+    const page = await paseo.agents.list({ scope: "active", page: { limit: 200, cursor }, filter: { includeArchived: true } });
     for (const { agent, project } of page.entries) {
       rows.push(mapLocalAgent(hostId, hostName, agent, project.workspaceName ?? null));
     }
     cursor = page.pageInfo.hasMore ? page.pageInfo.nextCursor ?? undefined : undefined;
   } while (cursor);
-  return rows.filter(isListedAgent);
+  return rows.filter(isDisplayableAgent);
 }
 
 const localAgentMap = new Map<string, RemoteAgent>();
@@ -138,7 +138,7 @@ function rememberLocalAgent(hostId: string, hostName: string, agent: Parameters<
     localAgentHostName = hostName;
   }
   const row = mapLocalAgent(localAgentHostId || hostId, localAgentHostName || hostName, agent, project?.workspaceName ?? null);
-  if (!isListedAgent(row)) localAgentMap.delete(row.id);
+  if (!isDisplayableAgent(row)) localAgentMap.delete(row.id);
   else localAgentMap.set(row.id, row);
   publishLocalAgents();
 }
@@ -243,9 +243,15 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const pulse = useRef(new Animated.Value(0.35)).current;
   const paseo = usePaseo();
   const reloadRpc = useRpc(agentReload);
+  const archiveRpc = useRpc(agentArchive);
+  const unarchiveRpc = useRpc(agentUnarchive);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [reloadingId, setReloadingId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [reloadNote, setReloadNote] = useState<string | null>(null);
+
   const reloadAgent = (agent: RemoteAgent) => {
     if (reloadingId) return;
     setReloadingId(agent.id);
@@ -262,6 +268,51 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       setReloadingId((current) => current === agent.id ? null : current);
     });
   };
+
+  const archiveAgent = (agent: RemoteAgent) => {
+    if (archivingId) return;
+    setArchivingId(agent.id);
+    setReloadNote(null);
+    const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
+    const request = local
+      ? paseo.agents.ref(agent.id).archive()
+      : archiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
+    void Promise.resolve(request).then(() => {
+      const existing = localAgentMap.get(agent.id);
+      if (existing) {
+        localAgentMap.set(agent.id, { ...existing, archivedAt: new Date().toISOString() });
+        publishLocalAgents();
+      }
+      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已归档`);
+    }).catch((error: unknown) => {
+      setReloadNote(error instanceof Error ? error.message : "归档失败");
+    }).finally(() => {
+      setArchivingId((current) => current === agent.id ? null : current);
+    });
+  };
+
+  const unarchiveAgent = (agent: RemoteAgent) => {
+    if (unarchivingId) return;
+    setUnarchivingId(agent.id);
+    setReloadNote(null);
+    const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
+    const request = local
+      ? paseo.agents.ref(agent.id).refresh()
+      : unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
+    void Promise.resolve(request).then(() => {
+      const existing = localAgentMap.get(agent.id);
+      if (existing) {
+        localAgentMap.set(agent.id, { ...existing, archivedAt: null, status: "idle" });
+        publishLocalAgents();
+      }
+      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
+    }).catch((error: unknown) => {
+      setReloadNote(error instanceof Error ? error.message : "恢复失败");
+    }).finally(() => {
+      setUnarchivingId((current) => current === agent.id ? null : current);
+    });
+  };
+
   useEffect(() => {
     const animation = Animated.loop(Animated.sequence([
       Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -272,7 +323,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   }, [pulse]);
   const all = owned.agents
     .map((agent) => ({ agent, workspace: agent.workspace ?? "" }))
-    .filter(({ agent, workspace }) => isListedAgent(agent) && agentMatchesQuery(agent, workspace, query));
+    .filter(({ agent, workspace }) => isDisplayableAgent(agent) && agentMatchesQuery(agent, workspace, query));
   const activityAt = (agent: RemoteAgent) => agentActivityAt(agent);
   const byRecent = (a: (typeof all)[number], b: (typeof all)[number]) => (Date.parse(activityAt(b.agent) ?? "") || 0) - (Date.parse(activityAt(a.agent) ?? "") || 0);
   const error = all.filter(({ agent }) => agentDisplaySection(agent) === "error").sort(byRecent);
@@ -280,6 +331,8 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const done = all.filter(({ agent }) => agentDisplaySection(agent) === "done").sort(byRecent);
   const idle = all.filter(({ agent }) => agentDisplaySection(agent) === "idle").sort(byRecent);
   const closed = all.filter(({ agent }) => agentDisplaySection(agent) === "closed").sort(byRecent);
+  const archived = all.filter(({ agent }) => agentDisplaySection(agent) === "archived").sort(byRecent);
+  const isArchivedExpanded = showArchived || query.trim().length > 0;
   const copyAgentId = (agentId: string) => {
     void copyText(agentIdClipboardText(agentId)).then(() => {
       setCopiedId(agentId);
@@ -299,9 +352,20 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
               <Text numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}>{agent.name || agent.id}</Text>
             </View>
             <Text numberOfLines={1} style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>{formatRelativeTime(activityAt(agent))}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel={`重载 Agent ${agent.id}`} hitSlop={8} disabled={reloadingId === agent.id} onPress={(event) => { event.stopPropagation(); reloadAgent(agent); }}>
-              <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
-            </Pressable>
+            {label === "idle" || label === "done" || label === "closed" ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`归档 Agent ${agent.id}`} hitSlop={8} disabled={archivingId === agent.id} onPress={(event) => { event.stopPropagation(); archiveAgent(agent); }}>
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{archivingId === agent.id ? "归档中" : "归档"}</Text>
+              </Pressable>
+            ) : null}
+            {label === "archived" ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`恢复 Agent ${agent.id}`} hitSlop={8} disabled={unarchivingId === agent.id} onPress={(event) => { event.stopPropagation(); unarchiveAgent(agent); }}>
+                <Text style={{ color: theme.colors.statusSuccess, fontSize: 10, fontWeight: "700" }}>{unarchivingId === agent.id ? "恢复中" : "恢复"}</Text>
+              </Pressable>
+            ) : (
+              <Pressable accessibilityRole="button" accessibilityLabel={`重载 Agent ${agent.id}`} hitSlop={8} disabled={reloadingId === agent.id} onPress={(event) => { event.stopPropagation(); reloadAgent(agent); }}>
+                <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
+              </Pressable>
+            )}
             <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent ID ${agent.id}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); copyAgentId(agent.id); }}>
               <Text style={{ color: copiedId === agent.id ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{copiedId === agent.id ? "已复制" : "ID"}</Text>
             </Pressable>
@@ -320,6 +384,26 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
           {section("working", working, theme.colors.statusWarning, true)}
           {section("idle", idle, theme.colors.foregroundMuted)}
           {section("closed", closed, theme.colors.foregroundMuted)}
+          {archived.length > 0 ? (
+            <View style={{ gap: 4, marginTop: 4 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="展开或折叠已归档 Agent"
+                onPress={() => setShowArchived(!showArchived)}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingVertical: 3 }}
+              >
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: compact ? 12 : 13, fontWeight: "700", letterSpacing: 0.3 }}>
+                  archived · {archived.length}
+                </Text>
+                {!query.trim() ? (
+                  <Text style={{ color: theme.colors.accent, fontSize: 11, fontWeight: "600" }}>
+                    {isArchivedExpanded ? "收起 ▲" : "展开 ▼"}
+                  </Text>
+                ) : null}
+              </Pressable>
+              {isArchivedExpanded ? section("archived", archived, theme.colors.foregroundMuted) : null}
+            </View>
+          ) : null}
         </>
       )}
     </View>
@@ -418,6 +502,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
   useEffect(() => {
     injectScrollbarStyles();
   }, []);
+  const paseo = usePaseo();
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -446,7 +531,13 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const timers = [0, 50, 120, 280].map((ms) => setTimeout(focus, ms));
     return () => { alive = false; for (const timer of timers) clearTimeout(timer); };
   }, []);
+  const unarchiveRpc = useRpc(agentUnarchive);
   const selectAgent = (agent: RemoteAgent) => {
+    if (agent.archivedAt) {
+      const local = Boolean(agent.serverId) && agent.serverId === props.host.id;
+      if (local) void paseo.agents.ref(agent.id).refresh().catch(() => {});
+      else void unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id }).catch(() => {});
+    }
     try {
       prepareAgentNavigation(agent, {
         platform: props.layout.platform,
