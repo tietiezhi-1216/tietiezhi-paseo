@@ -4,7 +4,7 @@ import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useRpc, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, type Family } from "../shared/accounts.ts";
-import { getQuota, selectQuotaWindow, type AccountQuota, type QuotaSnapshot, type QuotaWindow } from "../shared/quota.ts";
+import { getQuota, selectQuotaWindow, legacyQuotaWindows, type AccountQuota, type QuotaSnapshot, type QuotaWindow } from "../shared/quota.ts";
 import { quotaGroups } from "../shared/quota-groups.ts";
 import { timeUntilReset, readableResetCountdown, rollForwardResetAt } from "../shared/quota-footer-label.ts";
 import { AccountsPanel } from "./accounts.tsx";
@@ -83,7 +83,23 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
     const live = data?.quotas.find((item) => item.accountId === account.id);
     if (live && (live.windows.length > 0 || live.error)) return live;
     const persistent = persistentQuotaStore[account.id];
-    if (persistent) return persistent;
+    if (persistent && (persistent.windows.length > 0 || persistent.error)) return persistent;
+    if (account.cachedUsage) {
+      const rawWindows = legacyQuotaWindows(account.cachedUsage).filter(
+        (w) => account.family !== "antigravity" || w.pool !== "shared"
+      );
+      if (rawWindows.length > 0) {
+        return {
+          accountId: account.id,
+          windows: rawWindows,
+          plan: account.plan,
+          fetchedAt: null,
+          checkedAt: null,
+          stale: true,
+          error: null,
+        };
+      }
+    }
     return live;
   };
   return (
@@ -291,8 +307,8 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </Text>
           ) : null}
         </View>
-      ) : pending ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>读取额度中…</Text>
+      ) : pending && !quota?.windows.length ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>同步最新额度中…</Text>
       ) : !quota?.windows.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
       ) : null}

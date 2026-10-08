@@ -183,6 +183,7 @@ export class AccountService {
             active: active.has(account.id), authType: string(account.credential.type) ?? "unknown",
             expiresAt: number(account.credential.expires), subscriptionExpiresAt: account.subscriptionExpiresAt,
             plan: account.plan, canSwitch: auth.content !== null && problem === null, problem,
+            cachedUsage: account.cachedUsage,
           };
         }),
       },

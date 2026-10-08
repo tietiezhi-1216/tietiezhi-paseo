@@ -29,6 +29,7 @@ export const AccountSchema = z.object({
   plan: z.string().nullable(),
   canSwitch: z.boolean(),
   problem: z.string().nullable(),
+  cachedUsage: z.unknown().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 export const AccountSnapshotSchema = z.object({

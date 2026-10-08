@@ -182,10 +182,6 @@ function App() {
         calls.push({ kind: "agent-reload", serverId: hostId, input });
         return { agentId: input.agentId, hostId: input.hostId };
       }
-      if (name === "slotgame.agent.close") {
-        calls.push({ kind: "agent-close", serverId: hostId, input });
-        return { agentId: input.agentId, closed: true };
-      }
       calls.push({ kind: "switch", serverId: hostId, input });
       snapshots[hostId] = { ...snapshots[hostId], revision: "c".repeat(64), accounts: snapshots[hostId].accounts.map((a) => ({ ...a, active: a.id === input.id })) };
       return { snapshot: structuredClone(snapshots[hostId]), backupCreated: true, notice: "测试切换成功" };

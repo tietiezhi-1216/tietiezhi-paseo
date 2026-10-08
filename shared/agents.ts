@@ -263,26 +263,12 @@ export const agentReload = defineRpc({
   }),
 });
 
-export const agentClose = defineRpc({
-  name: "slotgame.agent.close",
-  input: z.object({
-    hostId: z.string().default(""),
-    serverId: z.string().nullable().optional(),
-    agentId: z.string().min(1),
-  }),
-  output: z.object({
-    agentId: z.string(),
-    closed: z.boolean(),
-  }),
-});
-
 export const agentActivity = defineRpc({
   name: "slotgame.agent.activity",
   input: z.object({ refresh: z.boolean().optional() }),
   output: z.object({
     agents: z.array(RemoteAgentSchema).max(500),
     hosts: z.array(z.object({ id: z.string(), name: z.string(), serverId: z.string().nullable(), online: z.boolean() })).max(32),
-    closedIds: z.array(z.string()).optional(),
     fetchedAt: z.string(),
   }),
 });

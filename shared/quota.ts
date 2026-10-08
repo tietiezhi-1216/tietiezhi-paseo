@@ -18,6 +18,36 @@ export const QuotaWindowSchema = z.object({
   pool: z.enum(["gemini", "claude", "shared"]),
 });
 export type QuotaWindow = z.infer<typeof QuotaWindowSchema>;
+
+type Rec = Record<string, unknown>;
+const rec = (v: unknown): Rec => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Rec : {};
+const text = (v: unknown) => typeof v === "string" ? v : "";
+function num(v: unknown): number | null { return typeof v === "number" && Number.isFinite(v) ? v : null; }
+function percent(v: unknown): number | null { const n = num(v); return n === null ? null : Math.min(100, Math.max(0, n)); }
+function epoch(v: unknown): number | null {
+  if (typeof v === "string") { const d = Date.parse(v); return Number.isFinite(d) ? d : null; }
+  const n = num(v); return n === null || n <= 0 ? null : n < 1e10 ? n * 1000 : n;
+}
+export function normalizeWindow(id: string, label: string, used: unknown, reset: unknown, pool: QuotaWindow["pool"] = "shared"): QuotaWindow | null {
+  const p = percent(used);
+  return p === null ? null : { id: id.slice(0, 200), label: label.slice(0, 100), usedPercent: p, resetAt: epoch(reset), pool };
+}
+export function legacyQuotaWindows(value: unknown): QuotaWindow[] {
+  const usage = rec(value);
+  const windows: QuotaWindow[] = [];
+  for (const [id, label] of [["primary", "主窗口"], ["secondary", "次窗口"]] as const) {
+    const w = rec(usage[id]), normalized = normalizeWindow(id, label, w.usedPercent, w.resetAt);
+    if (normalized) windows.push(normalized);
+  }
+  for (const raw of (Array.isArray(usage.windows) ? usage.windows : []).slice(0, 100)) {
+    const w = rec(raw), label = text(w.label);
+    const existingPool = w.pool === "gemini" || w.pool === "claude" ? (w.pool as "gemini" | "claude") : null;
+    const pool = existingPool ?? (/gemini/i.test(label) ? "gemini" : /claude|gpt|anthropic/i.test(label) ? "claude" : "shared");
+    const normalized = normalizeWindow(text(w.id) || `legacy-${windows.length}`, label, w.usedPercent, w.resetAt, pool);
+    if (normalized) windows.push(normalized);
+  }
+  return windows.slice(0, 100);
+}
 export function selectQuotaWindow(family: Family, model: string | null, windows: readonly QuotaWindow[]): QuotaWindow | null {
   let candidates = [...windows];
   if (family === "antigravity") {
