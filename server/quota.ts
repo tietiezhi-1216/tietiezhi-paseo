@@ -24,7 +24,8 @@ export class QuotaService {
       const fingerprint = createHash("sha256").update(JSON.stringify(account.credential)).digest("hex");
       const key = account.id + ":" + fingerprint;
       const old = this.cache.get(key);
-      if (old && this.now() - old.attemptedAt < (input.refresh ? 5_000 : 60_000)) { return old.result; }
+      const isExpiredWindow = old?.result.windows.some((w) => w.resetAt != null && w.resetAt < this.now());
+      if (old && !isExpiredWindow && this.now() - old.attemptedAt < (input.refresh ? 5_000 : 60_000)) { return old.result; }
       let work = this.pending.get(key);
       if (!work) {
         const previous = old?.result ?? [...this.cache.values()].filter((v) => v.result.accountId === account.id).sort((a, b) => b.attemptedAt - a.attemptedAt)[0]?.result;

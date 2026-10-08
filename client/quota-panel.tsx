@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useRpc, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, type Family } from "../shared/accounts.ts";
 import { getQuota, selectQuotaWindow, type AccountQuota, type QuotaSnapshot, type QuotaWindow } from "../shared/quota.ts";
 import { quotaGroups } from "../shared/quota-groups.ts";
@@ -53,9 +53,21 @@ export function QuotaPanel(props: QuotaPanelProps) {
 
 function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: QuotaPanelProps & { family: Family; onFamilyChange(family: Family): void }) {
   const quota = useQuota(host.id, family, null, true);
+  const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const [loginOpen, setLoginOpen] = useState(false);
+  const refreshMutation = useMutation({
+    mutationFn: (selected: Family) => {
+      if (selected === "go") throw new Error("此渠道已停用");
+      return rpc({ family: selected, all: true, refresh: true });
+    },
+    onSuccess(result: QuotaSnapshot, selected: Family) {
+      updatePersistentQuotas(result.quotas, selected, result.currentAccountId);
+      queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, result);
+      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
+    },
+  });
   const cachedData = queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, true])
     ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
   const data = (quota.data?.family === family ? quota.data : undefined)
@@ -90,14 +102,24 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
           />
           {!props.layout.compact ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13, fontWeight: "500" }}>{rows.length} 个账号</Text> : null}
         </View>
-        <Action
-          theme={theme}
-          title="+ 登录"
-          label="登录"
-          testID="quota-login"
-          disabled={!online || loginOpen}
-          onPress={() => setLoginOpen(true)}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Action
+            theme={theme}
+            title={quota.isFetching || refreshMutation.isPending ? "刷新中…" : "刷新"}
+            label="刷新额度"
+            testID="quota-panel-refresh"
+            disabled={!online || quota.isFetching || refreshMutation.isPending}
+            onPress={() => refreshMutation.mutate(family)}
+          />
+          <Action
+            theme={theme}
+            title="+ 登录"
+            label="登录"
+            testID="quota-login"
+            disabled={!online || loginOpen}
+            onPress={() => setLoginOpen(true)}
+          />
+        </View>
       </View>
 
       {!online ? <Notice theme={theme} text="离线 · 缓存" /> : null}
