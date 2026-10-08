@@ -10,9 +10,17 @@ export const LIVE_SLOTS: Record<Family, string> = {
   codex: "openai-codex", xai: "xai", go: "opencode-go", antigravity: "antigravity",
 };
 
+/** Extra slot aliases that share the same family and credential as a LIVE_SLOT. */
+const SLOT_ALIASES: Record<string, Family> = {
+  "openai-codex-fast": "codex",
+};
+
 export function familyOfSlot(slot: string): Family | null {
   for (const [family, base] of Object.entries(LIVE_SLOTS)) {
     if (slot === base || slot.startsWith(`${base}-account-`)) return family as Family;
+  }
+  for (const [alias, family] of Object.entries(SLOT_ALIASES)) {
+    if (slot === alias || slot.startsWith(`${alias}-account-`)) return family;
   }
   return null;
 }

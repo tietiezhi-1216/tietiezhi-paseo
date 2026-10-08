@@ -2,7 +2,7 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { AccountSnapshotSchema, FamilySchema, familyOfSlot, type Family } from "./accounts.ts";
 
-const SlotSchema = z.string().max(128).regex(/^(openai-codex|xai|antigravity)(-account-[A-Za-z0-9_-]+)?$/);
+const SlotSchema = z.string().max(128).regex(/^(openai-codex|openai-codex-fast|xai|antigravity)(-account-[A-Za-z0-9_-]+)?$/);
 export function resolveQuotaRoute(provider: string | null | undefined, model: string | null | undefined): { family: Family; slot: string } | null {
   if (!provider || !/^pi(?:\/|$)/.test(provider)) return null;
   // The route must be explicit. A model name alone cannot distinguish providers.
