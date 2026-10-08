@@ -58,6 +58,36 @@ const GOOGLE_CLIENT_SECRET =
   process.env.ANTIGRAVITY_CLIENT_SECRET ||
   Buffer.from("R09DU1BYLUs1OEZXUjQ" + "4NkxkTEoxbUxCOHNYQzR6NnFEQWY=", "base64").toString();
 
+const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
+
+export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
+  const agent = getProxyAgent();
+  const dispatcher = getDispatcher();
+  try {
+    const response = await fetcher(OPENAI_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refresh,
+        client_id: OPENAI_CLIENT_ID,
+      }),
+      ...(dispatcher ? { dispatcher } as any : {}),
+      ...(agent ? { agent } as any : {}),
+    });
+    if (!response.ok) return null;
+    const data = rec(await response.json());
+    const access = text(data.access_token);
+    const newRefresh = text(data.refresh_token) || refresh;
+    const expiresIn = num(data.expires_in) ?? 864000;
+    if (!access) return null;
+    return { access, refresh: newRefresh, expires: Date.now() + expiresIn * 1000 - 60_000 };
+  } catch {
+    return null;
+  }
+}
+
 export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; expires: number } | null> {
   const agent = getProxyAgent();
   const dispatcher = getDispatcher();
@@ -101,6 +131,17 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
     }
   }
 
+  // Auto-refresh expired OpenAI Codex OAuth token
+  if (family === "codex" && refreshToken && (!token || (expiresAt !== null && expiresAt <= Date.now() + 30_000))) {
+    const refreshed = await refreshOpenAICodexToken(refreshToken, fetcher);
+    if (refreshed) {
+      token = refreshed.access;
+      credential.access = refreshed.access;
+      credential.refresh = refreshed.refresh;
+      credential.expires = refreshed.expires;
+    }
+  }
+
   if (!token || token.startsWith("!")) throw new Error("此授权类型不支持额度查询");
 
   const request = async (url: string, init: RequestInit = {}) => {
@@ -115,20 +156,43 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
       ...(agent ? { agent } : {}),
     };
     let response = await fetcher(url, fetchInit);
-    if (response.status === 401 && family === "antigravity" && refreshToken) {
-      const refreshed = await refreshGoogleToken(refreshToken, fetcher);
-      if (refreshed) {
-        token = refreshed.access;
-        credential.access = refreshed.access;
-        credential.expires = refreshed.expires;
-        response = await fetcher(url, {
-          ...init,
-          redirect: "error",
-          signal,
-          headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
-          ...(dispatcher ? { dispatcher } : {}),
-          ...(agent ? { agent } : {}),
-        });
+    if (response.status === 401) {
+      if (family === "antigravity" && refreshToken) {
+        const refreshed = await refreshGoogleToken(refreshToken, fetcher);
+        if (refreshed) {
+          token = refreshed.access;
+          credential.access = refreshed.access;
+          credential.expires = refreshed.expires;
+          response = await fetcher(url, {
+            ...init,
+            redirect: "error",
+            signal,
+            headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
+            ...(dispatcher ? { dispatcher } : {}),
+            ...(agent ? { agent } : {}),
+          });
+        }
+      } else if (family === "codex" && refreshToken) {
+        const refreshed = await refreshOpenAICodexToken(refreshToken, fetcher);
+        if (refreshed) {
+          token = refreshed.access;
+          credential.access = refreshed.access;
+          credential.refresh = refreshed.refresh;
+          credential.expires = refreshed.expires;
+          response = await fetcher(url, {
+            ...init,
+            redirect: "error",
+            signal,
+            headers: {
+              Authorization: "Bearer " + token,
+              Accept: "application/json",
+              ...(text(credential.accountId) ? { "ChatGPT-Account-Id": text(credential.accountId) } : {}),
+              ...init.headers,
+            },
+            ...(dispatcher ? { dispatcher } : {}),
+            ...(agent ? { agent } : {}),
+          });
+        }
       }
     }
     if (!response.ok) throw new Error(response.status === 401 ? "授权已失效，请在 Pi 续期或重新登录" : "额度接口 HTTP " + response.status);
