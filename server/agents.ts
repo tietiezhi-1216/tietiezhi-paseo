@@ -123,7 +123,7 @@ async function readRemoteAgents() {
     try {
       entry = await ensureRemoteAgentClient(host);
       const serverId = resolveHostServerId(entry.daemon.getLastServerInfoMessage()?.serverId, host.serverId);
-      const listed = await entry.client.agents.list({ scope: "active", filter: { includeArchived: true } });
+      const listed = await entry.client.agents.list({ filter: { includeArchived: true } });
       const agents = listed.entries.map(({ agent, project }) => ({
         hostId: host.id,
         hostName: host.name,

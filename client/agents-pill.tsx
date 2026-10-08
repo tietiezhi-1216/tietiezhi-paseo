@@ -102,7 +102,7 @@ async function listLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: strin
   const rows: RemoteAgent[] = [];
   let cursor: string | undefined;
   do {
-    const page = await paseo.agents.list({ scope: "active", page: { limit: 200, cursor }, filter: { includeArchived: true } });
+    const page = await paseo.agents.list({ page: { limit: 200, cursor }, filter: { includeArchived: true } });
     for (const { agent, project } of page.entries) {
       rows.push(mapLocalAgent(hostId, hostName, agent, project.workspaceName ?? null));
     }
@@ -161,14 +161,24 @@ function watchLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: string, ho
   localAgentHostId = hostId;
   localAgentHostName = hostName;
   localAgentWatch = paseo.agents.subscribe((update) => {
-    if (update.kind === "remove") forgetLocalAgent(update.agentId);
-    else rememberLocalAgent(localAgentHostId, localAgentHostName, update.agent, update.project);
+    if (update.kind === "remove") {
+      const existing = localAgentMap.get(update.agentId);
+      if (existing) {
+        localAgentMap.set(update.agentId, { ...existing, archivedAt: existing.archivedAt ?? new Date().toISOString() });
+        publishLocalAgents();
+      }
+    } else {
+      rememberLocalAgent(localAgentHostId, localAgentHostName, update.agent, update.project);
+    }
   });
   const refreshListed = () => {
     void listLocalAgents(paseo, localAgentHostId, localAgentHostName).then((rows) => {
       const seen = new Set(rows.map((row) => row.id));
       for (const id of localAgentMap.keys()) {
-        if (!seen.has(id)) localAgentMap.delete(id);
+        if (!seen.has(id)) {
+          const existing = localAgentMap.get(id);
+          if (!existing?.archivedAt) localAgentMap.delete(id);
+        }
       }
       for (const row of rows) localAgentMap.set(row.id, row);
       publishLocalAgents();
