@@ -19,7 +19,6 @@ const CHANNEL_TABS = [
 
 export function useQuota(hostId: string, family: Family | null, slot: string | null, all = false, enabled = true) {
   const rpc = useRpc(getQuota);
-  const online = useHosts().find((h) => h.serverId === hostId)?.status === "online";
   return useQuery({
     queryKey: ["tietiezhi", "quota", hostId, family, slot, all],
     queryFn: async ({ signal }) => {
@@ -28,10 +27,10 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
       if (signal.aborted) throw new Error("额度读取已取消");
       return result;
     },
-    enabled: enabled && online && family !== null && family !== "go",
+    enabled: enabled && family !== null && family !== "go",
     staleTime: 60_000, gcTime: 30 * 60_000, retry: false,
     placeholderData: (previousData) => previousData,
-    refetchInterval: enabled && online && family && family !== "go" ? 60_000 : false,
+    refetchInterval: enabled && family && family !== "go" ? 60_000 : false,
   });
 }
 

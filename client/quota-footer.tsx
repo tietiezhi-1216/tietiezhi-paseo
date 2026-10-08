@@ -8,7 +8,7 @@ import { type QuotaSnapshot, getQuota, selectQuotaWindow } from "../shared/quota
 import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
-import { persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
+import { activeAccountStore, persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
 
 function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claude" } | null {
   const text = raw.toLowerCase().trim();
@@ -140,14 +140,16 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
   }, []);
 
   if (quota.data?.quotas) {
-    updatePersistentQuotas(quota.data.quotas);
+    updatePersistentQuotas(quota.data.quotas, footerFamily, quota.data.currentAccountId);
   }
 
   const data = quota.data ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, true]);
-  const q = data?.quotas.find((a: any) => a.accountId === data.currentAccountId)
-    ?? (data?.currentAccountId ? persistentQuotaStore[data.currentAccountId] : undefined)
-    ?? Object.values(persistentQuotaStore).find(item => item.windows.some(w => footerFamily === "antigravity" ? (w.pool === "gemini" || w.pool === "claude") : w.pool === "shared"))
-    ?? data?.quotas[0];
+  const activeAccountId = data?.currentAccountId ?? activeAccountStore[footerFamily];
+  const q = (activeAccountId ? data?.quotas.find((a: any) => a.accountId === activeAccountId) : undefined)
+    ?? (activeAccountId ? persistentQuotaStore[activeAccountId] : undefined)
+    ?? data?.quotas.find((a: any) => a.accountId === data?.currentAccountId)
+    ?? data?.quotas[0]
+    ?? (activeAccountId ? persistentQuotaStore[activeAccountId] : undefined);
 
   const stale = !online || quota.isError || q?.stale || (refresh.variables === footerFamily && refresh.isError);
   const label = quotaFooterLabel(footerFamily, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);

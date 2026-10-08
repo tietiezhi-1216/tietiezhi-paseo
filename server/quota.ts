@@ -14,6 +14,7 @@ export class QuotaService {
     this.accounts = accounts; this.fetcher = fetcher; this.now = now;
   }
   async get(input: { family: Family; slot?: string | null; all?: boolean; refresh?: boolean }, signal?: AbortSignal): Promise<QuotaSnapshot> {
+
     if (input.family === "go") throw new Error("此渠道已停用");
     const registry = await this.accounts().quotaCredentials(input.family, input.slot ?? LIVE_SLOTS[input.family]);
     const entries = input.all ? registry.entries : registry.entries.filter((a) => a.id === registry.currentAccountId);
@@ -46,6 +47,14 @@ export class QuotaService {
     const quotas = await Promise.all(quotaPromises);
     if (signal?.aborted) throw new Error("插件已停止");
     const latest = await this.accounts().quotaCredentials(input.family, input.slot ?? LIVE_SLOTS[input.family]);
+    const validQuotas = quotas.filter((q) => q.windows.length > 0);
+    if (validQuotas.length > 0) {
+      try {
+        await this.accounts().updateAllAccountUsages(
+          validQuotas.map((q) => ({ id: q.accountId, quota: { windows: q.windows, plan: q.plan, fetchedAt: q.fetchedAt ?? this.now() } }))
+        );
+      } catch {}
+    }
     return { snapshot: latest.snapshot, family: input.family, currentAccountId: latest.currentAccountId,
       quotas: quotas.filter((q) => latest.snapshot.accounts.some((a) => a.id === q.accountId)) };
   }
@@ -61,9 +70,6 @@ export class QuotaService {
       const quota = await fetchProviderQuota(account.family, account.credential, this.fetcher, signal);
       if (account.credential.access !== tokenBefore) {
         try { await this.accounts().updateCredential(account.id, account.credential); } catch {}
-      }
-      if (quota.windows.length > 0) {
-        try { await this.accounts().updateAccountUsage(account.id, { windows: quota.windows, plan: quota.plan, fetchedAt: this.now() }); } catch {}
       }
       return { accountId: account.id, ...quota, fetchedAt: this.now(), checkedAt: this.now(), stale: false, error: null };
     } catch (error) {

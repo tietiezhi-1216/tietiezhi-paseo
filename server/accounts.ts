@@ -333,6 +333,29 @@ export class AccountService {
     } catch {}
   }
 
+  async updateAllAccountUsages(updates: Array<{ id: string; quota: { windows: readonly unknown[]; plan: string | null; fetchedAt: number } }>): Promise<void> {
+    try {
+      const registry = await this.registry();
+      let changed = false;
+      for (const update of updates) {
+        const target = registry.accounts.find((a) => a.id === update.id);
+        if (target) {
+          target.plan = update.quota.plan ?? target.plan;
+          target.cachedAt = update.quota.fetchedAt;
+          target.cachedUsage = {
+            account: target.label,
+            plan: target.plan,
+            windows: update.quota.windows,
+          };
+          changed = true;
+        }
+      }
+      if (changed) {
+        await this.atomicWrite(this.paths.archive, { ...registry.archive.value, version: 1, accounts: registry.accounts });
+      }
+    } catch {}
+  }
+
   async delete(input: { id: string; revision: string }, signal?: AbortSignal) {
     let release: (() => Promise<void>) | undefined;
     try {

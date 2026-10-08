@@ -1,17 +1,39 @@
 import type { AccountQuota } from "../shared/quota.ts";
+import type { Family } from "../shared/accounts.ts";
 
-const CACHE_KEY = "tietiezhi.quotas.cache.v3";
+const QUOTA_CACHE_KEY = "tietiezhi.quotas.cache.v4";
+const ACTIVE_ACCOUNT_CACHE_KEY = "tietiezhi.active.account.v4";
 
 export const persistentQuotaStore: Record<string, AccountQuota> = (() => {
   if (typeof localStorage === "undefined") return {};
   try {
-    return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(QUOTA_CACHE_KEY) || "{}");
   } catch {
     return {};
   }
 })();
 
-export function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined) {
+export const activeAccountStore: Record<string, string> = (() => {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(ACTIVE_ACCOUNT_CACHE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+})();
+
+export function setActiveAccountCache(family: Family, accountId: string | null | undefined) {
+  if (!accountId || typeof localStorage === "undefined") return;
+  activeAccountStore[family] = accountId;
+  try {
+    localStorage.setItem(ACTIVE_ACCOUNT_CACHE_KEY, JSON.stringify(activeAccountStore));
+  } catch {}
+}
+
+export function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefined, family?: Family, currentAccountId?: string | null) {
+  if (family && currentAccountId) {
+    setActiveAccountCache(family, currentAccountId);
+  }
   if (!quotas || !quotas.length) return;
   let changed = false;
   for (const q of quotas) {
@@ -22,7 +44,7 @@ export function updatePersistentQuotas(quotas: readonly AccountQuota[] | undefin
   }
   if (changed && typeof localStorage !== "undefined") {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(persistentQuotaStore));
+      localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(persistentQuotaStore));
     } catch {}
   }
 }
