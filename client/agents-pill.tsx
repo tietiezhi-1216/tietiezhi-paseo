@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ActivityIndicator, Animated, Easing, Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
@@ -422,22 +422,20 @@ function AgentsPopover(props: PluginButtonContentProps) {
   }, []);
 
   return (
-    <View ref={popoverRef} style={{ alignSelf: "stretch", minWidth: compact ? 280 : 360, position: "relative" }}>
-      {/* 🔒 1. 顶部绝对固定区：标题 + 复制 ID + 搜索输入框 (STICKY TOP - NEVER SCROLLS) */}
-      <View
-        {...({
-          style: {
-            position: "sticky",
-            top: -12,
-            zIndex: 99,
-            backgroundColor: props.theme.colors.surface1,
-            paddingTop: 4,
-            paddingBottom: 6,
-            marginBottom: 4,
-            flexShrink: 0,
-          }
-        } as any)}
-      >
+    <View
+      ref={popoverRef}
+      style={{
+        minWidth: compact ? 280 : 360,
+        width: compact ? 280 : 360,
+        height: 410,
+        maxHeight: 410,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      {/* 🔒 1. 顶部绝对固定区：标题 + 复制 ID + 搜索输入框 (Completely outside ScrollView, NEVER scrolls) */}
+      <View style={{ flexShrink: 0, paddingBottom: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
           <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 13, fontWeight: "700", flex: 1 }}>{currentTitle}</Text>
           {currentAgentId ? (
@@ -485,15 +483,22 @@ function AgentsPopover(props: PluginButtonContentProps) {
         {navigationError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11, paddingTop: 6 }}>{navigationError}</Text> : null}
       </View>
 
-      {/* 📜 2. 独立列表区：只有输入框下方的列表在滚动 (List below scrolls underneath) */}
-      <AgentActivity
-        theme={props.theme}
-        compact={compact}
-        currentServerId={props.host.id}
-        hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
-        query={query}
-        onSelectAgent={selectAgent}
-      />
+      {/* 📜 2. 独立滚动区：只滚动下方面板，隐藏滚动条 (ONLY the list below scrolls) */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        {...({ className: "paseo-agents-scroll" } as any)}
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={{ gap: 10, paddingBottom: 6 }}
+      >
+        <AgentActivity
+          theme={props.theme}
+          compact={compact}
+          currentServerId={props.host.id}
+          hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+          query={query}
+          onSelectAgent={selectAgent}
+        />
+      </ScrollView>
     </View>
   );
 }

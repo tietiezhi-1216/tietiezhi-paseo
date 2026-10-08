@@ -72,7 +72,7 @@ test("the agents popover reuses the pill query so the first open is already popu
   assert.equal((client.match(/AGENT_ACTIVITY_QUERY_KEY/g) ?? []).length >= 2, true);
   assert.match(client, /fontVariant: \["tabular-nums"\]/);
   assert.match(client, /minWidth: compact \? 280 : 360/);
-  assert.doesNotMatch(client, /<ScrollView/);
+  assert.match(client, /<ScrollView/);
   assert.match(client, /kind: "popover"/);
   assert.match(client, /复制当前 Agent ID/);
   assert.doesNotMatch(client, /kind: "menu"/);
