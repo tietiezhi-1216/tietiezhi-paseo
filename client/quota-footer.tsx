@@ -25,36 +25,52 @@ function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claud
 export function detectCurrentModelInfo(): { family: Family; pool?: "gemini" | "claude" } | null {
   if (typeof document === "undefined") return null;
 
-  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+  // 1. Direct testID match (test runner & dev)
+  const byId = document.querySelector('[data-testid="combined-model-selector"]')
+    || document.querySelector('[data-testid="agent-controls-model"]');
+  if (byId) {
+    const raw = (byId.getAttribute("aria-label") || "") + " " + (byId.textContent || "");
+    const match = /(?:选择模型|select model|模型)s*[（(·]s*([^）)]+)[）)]?/i.exec(raw);
+    const parsed = parseModelText(match ? match[1] : raw);
+    if (parsed) return parsed;
+  }
 
-  // 1. Primary: find visible model selector button in active chat (offsetParent !== null and width > 0)
+  // 2. Visible model selector in active chat composer
+  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
   const activeButtons = allButtons.filter((b: any) => {
     if (b.offsetParent === null) return false;
     const r = b.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   });
 
+  // Sort bottom-to-top so the chat composer at the bottom always wins
+  activeButtons.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+
   for (const b of activeButtons) {
     const label = b.getAttribute("aria-label") || "";
-    const text = b.textContent || "";
-    const match = /(?:选择模型|select model)[（(]([^）)]+)[）)]/i.exec(label);
+    const match = /(?:选择模型|select model|模型)s*[（(·]s*([^）)]+)[）)]?/i.exec(label);
     if (match) {
       const parsed = parseModelText(match[1]);
-      if (parsed) return parsed;
-    }
-    if (/gemini|claude|grok|gpt|chatgpt/i.test(label) || /gemini|claude|grok|gpt|chatgpt/i.test(text)) {
-      const parsed = parseModelText(label + " " + text);
       if (parsed) return parsed;
     }
   }
 
-  // 2. Fallback to any button with model pattern
-  for (const b of allButtons) {
-    const label = b.getAttribute("aria-label") || "";
-    const match = /(?:选择模型|select model)[（(]([^）)]+)[）)]/i.exec(label);
-    if (match) {
-      const parsed = parseModelText(match[1]);
-      if (parsed) return parsed;
+  // 3. Fallback: composer near textarea
+  const textareas = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
+  const activeInput = textareas.find((el: any) => el.offsetParent !== null && el.getBoundingClientRect().height > 0);
+  if (activeInput) {
+    let container: Element | null = activeInput.parentElement;
+    for (let depth = 0; depth < 5 && container; depth++) {
+      const modelBtn = Array.from(container.querySelectorAll('button, [role="button"]')).find((b) => {
+        const txt = (b.getAttribute("aria-label") || "") + " " + (b.textContent || "");
+        return /gemini|claude|grok|gpt|chatgpt/i.test(txt);
+      });
+      if (modelBtn) {
+        const txt = (modelBtn.getAttribute("aria-label") || "") + " " + (modelBtn.textContent || "");
+        const parsed = parseModelText(txt);
+        if (parsed) return parsed;
+      }
+      container = container.parentElement;
     }
   }
 
