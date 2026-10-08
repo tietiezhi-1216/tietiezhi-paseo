@@ -104,6 +104,10 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
 
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const quota = useQuota(host.id, footerFamily, null, true);
+  // Warm cache for all channels in background so opening any tab in the dialog is 100% instant
+  useQuota(host.id, "codex", null, true);
+  useQuota(host.id, "antigravity", null, true);
+  useQuota(host.id, "xai", null, true);
   const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const refresh = useMutation({

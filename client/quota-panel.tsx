@@ -289,10 +289,12 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </Text>
           ) : null}
         </View>
-      ) : !quota?.windows.length && !pending ? (
+      ) : pending ? (
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>读取额度中…</Text>
+      ) : !quota?.windows.length ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
       ) : null}
-      {quota?.error && quota.windows.length ? (
+      {quota?.error ? (
         <Text accessibilityRole="alert" style={{ color: theme.colors.statusWarning, fontSize: 11 }}>
           {quotaFailureLabel(quota.error)}
         </Text>
