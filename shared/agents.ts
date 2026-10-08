@@ -258,13 +258,13 @@ export function resolveReloadHost<T extends { id: string; serverId?: string | nu
 export const agentReload = defineRpc({
   name: "slotgame.agent.reload",
   input: z.object({
-    hostId: z.string().min(1),
+    hostId: z.string().default(""),
     serverId: z.string().nullable().optional(),
     agentId: z.string().min(1),
   }),
   output: z.object({
     agentId: z.string(),
-    hostId: z.string(),
+    hostId: z.string().default(""),
   }),
 });
 

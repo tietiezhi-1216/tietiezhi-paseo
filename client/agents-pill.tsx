@@ -266,17 +266,16 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     if (reloadingId) return;
     setReloadingId(agent.id);
     setReloadNote(null);
-    const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
-    const request = local
-      ? paseo.agents.ref(agent.id).refresh()
-      : reloadRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
-    void Promise.resolve(request).then(() => {
-      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已重载`);
-    }).catch((error: unknown) => {
-      setReloadNote(error instanceof Error ? error.message : "重载失败");
-    }).finally(() => {
-      setReloadingId((current) => current === agent.id ? null : current);
-    });
+    reloadRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id })
+      .then(() => {
+        setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已重载`);
+      })
+      .catch((error: unknown) => {
+        setReloadNote(error instanceof Error ? error.message : "重载失败");
+      })
+      .finally(() => {
+        setReloadingId((current) => current === agent.id ? null : current);
+      });
   };
 
   const archiveAgent = (agent: RemoteAgent) => {
@@ -305,22 +304,21 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     if (unarchivingId) return;
     setUnarchivingId(agent.id);
     setReloadNote(null);
-    const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
-    const request = local
-      ? paseo.agents.ref(agent.id).refresh()
-      : unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id });
-    void Promise.resolve(request).then(() => {
-      const existing = localAgentMap.get(agent.id);
-      if (existing) {
-        localAgentMap.set(agent.id, { ...existing, archivedAt: null, status: "idle" });
-        publishLocalAgents();
-      }
-      setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
-    }).catch((error: unknown) => {
-      setReloadNote(error instanceof Error ? error.message : "恢复失败");
-    }).finally(() => {
-      setUnarchivingId((current) => current === agent.id ? null : current);
-    });
+    unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id })
+      .then(() => {
+        const existing = localAgentMap.get(agent.id);
+        if (existing) {
+          localAgentMap.set(agent.id, { ...existing, archivedAt: null, status: "idle" });
+          publishLocalAgents();
+        }
+        setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
+      })
+      .catch((error: unknown) => {
+        setReloadNote(error instanceof Error ? error.message : "恢复失败");
+      })
+      .finally(() => {
+        setUnarchivingId((current) => current === agent.id ? null : current);
+      });
   };
 
   useEffect(() => {

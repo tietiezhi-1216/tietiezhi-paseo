@@ -56,6 +56,8 @@ function configuredAgentHosts() {
 function targetUrl(target: string): string {
   if (target.startsWith("ws://") || target.startsWith("wss://")) return target.endsWith("/ws") ? target : `${target}/ws`;
   if (target.startsWith("tcp://")) return `ws://${target.slice("tcp://".length).replace(/\/$/, "")}/ws`;
+  if (target.startsWith("http://")) return `ws://${target.slice("http://".length).replace(/\/$/, "")}/ws`;
+  if (target.startsWith("https://")) return `wss://${target.slice("https://".length).replace(/\/$/, "")}/ws`;
   return `ws://${target.replace(/\/$/, "")}/ws`;
 }
 
@@ -161,14 +163,49 @@ async function readRemoteAgents() {
   };
 }
 
-export async function reloadRemoteAgent(input: { hostId: string; serverId?: string | null; agentId: string }) {
+function getLocalDaemonUrl(): string {
+  try {
+    const configPath = join(homedir(), ".paseo", "config.json");
+    if (existsSync(configPath)) {
+      const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+      const listen = parsed?.daemon?.listen;
+      if (typeof listen === "string" && listen.trim()) {
+        return targetUrl(listen.trim());
+      }
+    }
+  } catch {}
+  return "ws://127.0.0.1:6767/ws";
+}
+
+async function getLocalDaemonClient(): Promise<DaemonClient> {
+  const daemon = new DaemonClient({
+    url: getLocalDaemonUrl(),
+    clientId: `${AGENT_CLIENT_PREFIX}-local`,
+    clientType: "cli",
+    connectTimeoutMs: REMOTE_CLIENT_CONNECT_TIMEOUT_MS,
+    reconnect: { enabled: false },
+  });
+  await daemon.connect();
+  return daemon;
+}
+
+export async function reloadRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }) {
   const hosts = configuredAgentHosts();
   const host = resolveReloadHost(hosts, input);
-  if (!host) throw new Error("找不到这个 Agent 所在的局域网主机");
-  const entry = await ensureRemoteAgentClient(host);
-  await entry.client.agents.ref(input.agentId).refresh();
+  if (host) {
+    const entry = await ensureRemoteAgentClient(host);
+    await entry.daemon.refreshAgent(input.agentId);
+    agentCache = null;
+    return { agentId: input.agentId, hostId: host.id };
+  }
+  const daemon = await getLocalDaemonClient();
+  try {
+    await daemon.refreshAgent(input.agentId);
+  } finally {
+    await daemon.close().catch(() => {});
+  }
   agentCache = null;
-  return { agentId: input.agentId, hostId: host.id };
+  return { agentId: input.agentId, hostId: "" };
 }
 
 export async function archiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
@@ -189,9 +226,14 @@ export async function unarchiveRemoteAgent(input: { hostId?: string; serverId?: 
   const host = resolveReloadHost(hosts, input);
   if (host) {
     const entry = await ensureRemoteAgentClient(host);
-    await entry.client.agents.ref(input.agentId).refresh();
-  } else if (localPaseo) {
-    await localPaseo.agents.ref(input.agentId).refresh();
+    await entry.daemon.refreshAgent(input.agentId);
+  } else {
+    const daemon = await getLocalDaemonClient();
+    try {
+      await daemon.refreshAgent(input.agentId);
+    } finally {
+      await daemon.close().catch(() => {});
+    }
   }
   agentCache = null;
   return { agentId: input.agentId, unarchived: true };
