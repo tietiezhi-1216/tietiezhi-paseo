@@ -7,9 +7,12 @@ export const TurnPerformanceSchema = z.object({
   inputTokens: z.number(),
   outputTokens: z.number(),
   cachedTokens: z.number(),
+  reasoningTokens: z.number().optional(),
   durationMs: z.number(),
   tps: z.number(),
   timestamp: z.number(),
+  steps: z.number().optional(),
+  content: z.string().optional(),
 });
 export type TurnPerformanceData = z.infer<typeof TurnPerformanceSchema>;
 

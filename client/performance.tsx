@@ -1,14 +1,31 @@
 import { useState, useRef, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getModelPerformance, type TurnPerformanceData, type ModelPerformanceStats, type PerformanceOverview } from "../shared/performance.ts";
 import { hexAlpha } from "./ui.tsx";
 
-function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+export function formatTokens(count: number): string {
+  if (count >= 1_000_000) {
+    const m = count / 1_000_000;
+    return `${m >= 10 ? Math.round(m) : m.toFixed(1)}M`;
+  }
+  if (count >= 1_000) {
+    const k = count / 1_000;
+    return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
+  }
   return `${count}`;
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec >= 60) {
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}m ${sec}s`;
+  }
+  return `${Math.max(0.1, ms / 1000).toFixed(1)}s`;
 }
 
 function cleanModelLabel(model: string): string {
@@ -16,17 +33,29 @@ function cleanModelLabel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
-/** 1. 单轮会话结束时在复制操作栏旁边显示的性能徽章 */
+function CopyIcon({ size = 12, color = "#8b949e" }: { size?: number; color?: string }) {
+  if (typeof document === "undefined") return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+/** 1. 彻底重做整行 UI：一体化展示复制按钮、耗时、整轮 TPS 与 Token 消耗，隐藏原生重复 footer */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
   const badgeRef = useRef<any>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
     const el = badgeRef.current;
     if (!el) return;
 
-    const attachToFooter = () => {
+    // 寻找紧随其后的原生 footer，直接隐藏，避免重复拼凑
+    const hideNativeFooter = () => {
       let row = el.parentElement;
       while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
         if (row.nextElementSibling) break;
@@ -35,38 +64,42 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
       if (!row) return false;
 
       let next = row.nextElementSibling as HTMLElement | null;
-      let targetFooter: HTMLElement | null = null;
-
       for (let i = 0; i < 4 && next; i++) {
-        const slot = next.querySelector<HTMLElement>("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")?.closest?.("div")
-          || (next.querySelector("button") ? next : null);
-        if (slot) {
-          targetFooter = slot;
-          break;
+        const isFooterRow = next.querySelector("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")
+          || next.innerText?.includes("工作了");
+        if (isFooterRow) {
+          next.style.setProperty("display", "none", "important");
+          return true;
         }
         next = next.nextElementSibling as HTMLElement | null;
-      }
-
-      if (targetFooter && targetFooter !== el.parentElement) {
-        targetFooter.style.display = "flex";
-        targetFooter.style.flexDirection = "row";
-        targetFooter.style.alignItems = "center";
-        targetFooter.style.flexWrap = "wrap";
-        targetFooter.appendChild(el);
-        return true;
       }
       return false;
     };
 
-    if (!attachToFooter()) {
-      const t1 = setTimeout(attachToFooter, 80);
-      const t2 = setTimeout(attachToFooter, 250);
-      const t3 = setTimeout(attachToFooter, 600);
+    if (!hideNativeFooter()) {
+      const t1 = setTimeout(hideNativeFooter, 100);
+      const t2 = setTimeout(hideNativeFooter, 300);
+      const t3 = setTimeout(hideNativeFooter, 700);
       return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
   }, []);
 
   if (!data || data.outputTokens <= 0) return null;
+
+  const handleCopy = () => {
+    let textToCopy = data.content || "";
+    if (!textToCopy && typeof document !== "undefined" && badgeRef.current) {
+      // 备选：从上一条消息 DOM 节点读取文本
+      let prev = badgeRef.current.parentElement?.previousElementSibling as HTMLElement | null;
+      if (prev) textToCopy = prev.innerText || "";
+    }
+    if (textToCopy) {
+      void copyText(textToCopy).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {});
+    }
+  };
 
   const tpsColor = data.tps >= 50
     ? theme.colors.statusSuccess
@@ -74,8 +107,8 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
       ? theme.colors.statusWarning
       : theme.colors.foregroundMuted;
 
-  const durationSec = (data.durationMs / 1000).toFixed(1);
-  const cacheRatio = data.cachedTokens > 0
+  const durationStr = formatDuration(data.durationMs);
+  const cacheStr = data.cachedTokens >= 1_000
     ? ` (+${formatTokens(data.cachedTokens)}缓)`
     : "";
 
@@ -83,32 +116,63 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
     <View
       ref={badgeRef}
       style={{
-        alignSelf: "flex-start",
+        width: "100%",
         flexDirection: "row",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 5,
-        paddingHorizontal: 0,
-        paddingVertical: 1,
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 4,
         marginTop: 0,
-        marginBottom: 0,
-        opacity: 0.88,
       }}
     >
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
-      <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
+      {/* 复制按钮 */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="复制消息内容"
+        hitSlop={8}
+        onPress={handleCopy}
+        style={{ flexDirection: "row", alignItems: "center", gap: 4, cursor: "pointer" } as any}
+      >
+        <CopyIcon size={13} color={copied ? theme.colors.statusSuccess : theme.colors.foregroundMuted} />
+        {copied ? (
+          <Text style={{ color: theme.colors.statusSuccess, fontSize: 11, fontWeight: "600" }}>已复制</Text>
+        ) : null}
+      </Pressable>
+
+      {/* 耗时 */}
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
+        {durationStr}
+      </Text>
+
+      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+
+      {/* ⚡ 整轮真实 TPS 速度 */}
+      <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
       </Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
-        {formatTokens(data.inputTokens)}{cacheRatio} 入 / <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{formatTokens(data.outputTokens)} 出</Text>
+
+      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+
+      {/* 整轮完整 Token 统计 (过千强制 k) */}
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
+        {formatTokens(data.outputTokens)} 出 / {formatTokens(data.inputTokens)} 入{cacheStr}
       </Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
-        {durationSec}s
-      </Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "500" }}>
+
+      {/* 多步骤执行提示 */}
+      {data.steps && data.steps > 1 ? (
+        <>
+          <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+            {data.steps} 步
+          </Text>
+        </>
+      ) : null}
+
+      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+
+      {/* 模型名称 */}
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "500" }}>
         {cleanModelLabel(data.model)}
       </Text>
     </View>

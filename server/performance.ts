@@ -23,46 +23,67 @@ const STORE_PATH = join(homedir(), ".paseo", "tietiezhi", "model-performance.jso
 function extractTurnUsageFromNativeHandle(
   nativeHandle?: string | null,
   turnStartTime?: number,
-): { input: number; output: number; cached: number } | null {
+): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string } | null {
   if (!nativeHandle || !existsSync(nativeHandle)) return null;
   try {
-    const content = readFileSync(nativeHandle, "utf8");
-    const lines = content.trim().split("\n");
-    let input = 0;
-    let output = 0;
-    let cached = 0;
-    let found = false;
+    const rawContent = readFileSync(nativeHandle, "utf8");
+    const lines = rawContent.trim().split("\n");
+    if (!lines.length) return null;
 
-    // Scan backwards for assistant messages in this turn
+    // Find the last user message index that initiated this turn
+    let lastUserIndex = -1;
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
       if (!line) continue;
       try {
         const entry = JSON.parse(line);
+        if (entry.type === "message" && entry.message?.role === "user") {
+          lastUserIndex = i;
+          break;
+        }
+      } catch {}
+    }
+
+    // Collect all assistant steps from this user message to the end of session
+    const sliceFrom = lastUserIndex >= 0 ? lastUserIndex : Math.max(0, lines.length - 60);
+    let input = 0;
+    let output = 0;
+    let cached = 0;
+    let reasoning = 0;
+    let steps = 0;
+    let lastAssistantText = "";
+
+    for (let i = sliceFrom; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line);
         if (entry.type === "message" && entry.message?.role === "assistant") {
-          const msgTime = entry.timestamp ? Date.parse(entry.timestamp) : (entry.message?.timestamp ?? 0);
-          if (turnStartTime && turnStartTime > 0 && msgTime > 0 && msgTime < turnStartTime - 4_000) {
-            break;
-          }
+          steps++;
           const u = entry.message.usage;
-          if (u && typeof u.output === "number" && u.output > 0) {
+          if (u) {
             input += (u.input || 0);
             output += (u.output || 0);
             cached += (u.cacheRead || 0);
-            found = true;
+            reasoning += (u.reasoning || 0);
           }
-        }
-        if (entry.type === "message" && entry.message?.role === "user") {
-          const userTime = entry.timestamp ? Date.parse(entry.timestamp) : 0;
-          if (turnStartTime && turnStartTime > 0 && userTime >= turnStartTime - 5_000) {
-            break;
+          // Extract text for clipboard copying
+          const contentItems = entry.message.content;
+          if (Array.isArray(contentItems)) {
+            for (const item of contentItems) {
+              if (item?.type === "text" && typeof item.text === "string") {
+                lastAssistantText = item.text;
+              }
+            }
+          } else if (typeof entry.message.text === "string") {
+            lastAssistantText = entry.message.text;
           }
         }
       } catch {}
     }
 
-    if (found && output > 0) {
-      return { input, output, cached };
+    if (output > 0) {
+      return { input, output, cached, reasoning, steps, content: lastAssistantText };
     }
   } catch {}
   return null;
@@ -118,6 +139,9 @@ export class PerformanceService {
     let deltaInput = 0;
     let deltaOutput = 0;
     let deltaCached = 0;
+    let deltaReasoning = 0;
+    let turnSteps = 1;
+    let assistantContent = "";
 
     try {
       const agentHandle = context.paseo.agents.ref(event.agent.id);
@@ -129,7 +153,7 @@ export class PerformanceService {
         providerName = snapshot.agent.runtimeInfo.provider;
       }
 
-      // Method 1: Try reading exact per-turn assistant message usage from native session log
+      // Method 1: Try reading exact cumulative per-turn assistant messages from native session log
       const nativeUsage = extractTurnUsageFromNativeHandle(
         snapshot?.agent?.persistence?.nativeHandle,
         startTime,
@@ -139,6 +163,9 @@ export class PerformanceService {
         deltaInput = nativeUsage.input;
         deltaOutput = nativeUsage.output;
         deltaCached = nativeUsage.cached;
+        deltaReasoning = nativeUsage.reasoning;
+        turnSteps = nativeUsage.steps;
+        assistantContent = nativeUsage.content;
       } else {
         // Method 2: Fallback to cumulative delta with baseline guard
         const current = snapshot?.agent?.lastUsage;
@@ -184,9 +211,12 @@ export class PerformanceService {
       inputTokens: deltaInput,
       outputTokens: deltaOutput,
       cachedTokens: deltaCached,
+      reasoningTokens: deltaReasoning || undefined,
       durationMs,
       tps,
       timestamp: Date.now(),
+      steps: turnSteps,
+      content: assistantContent || undefined,
     };
 
     // 1. Record persistently
