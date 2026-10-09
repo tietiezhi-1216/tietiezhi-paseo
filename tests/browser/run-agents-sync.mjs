@@ -28,20 +28,28 @@ try {
     if (mobile) await page.evaluate(() => globalThis.__agentsSync.light(true));
     const label = page.getByTestId("agents-pill-label");
     const pill = page.getByTestId("agents-pill");
+    let currentName = "插件开发";
     async function matches(done, working) {
-      const expected = done > 0 ? `done · ${done}` : `working · ${working}`;
+      const status = done > 0 ? `done · ${done}` : `working · ${working}`;
+      const expected = `${currentName} · ${status}`;
       await label.getByText(expected, { exact: true }).waitFor();
       await page.getByTestId("agents-section-working").getByText(`working · ${working}`, { exact: true }).waitFor();
       if (done) await page.getByTestId("agents-section-done").getByText(`done · ${done}`, { exact: true }).waitFor();
       else assert.equal(await page.getByTestId("agents-section-done").count(), 0);
       const color = await page.getByTestId("agents-pill-status-dot").evaluate(el => getComputedStyle(el).backgroundColor);
       assert.equal(color, done ? "rgb(86, 170, 136)" : "rgb(170, 136, 68)");
-      assert.equal(await label.innerText(), expected, "No session-name prefix or unrelated local-only count");
+      assert.equal(await label.innerText(), expected, "Current Agent name + same-source global status count");
     }
     // CLOSED popover: connected Host's done must already drive both label and dot.
-    await label.getByText("done · 1", { exact: true }).waitFor();
+    await label.getByText("插件开发 · done · 1", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.__agentsSync.calls.filter(call => call.kind === "direct-rpc").length), 0);
+    await page.evaluate(() => globalThis.__agentsSync.rename("a", "current", "已改名任务"));
+    currentName = "已改名任务";
+    await label.getByText("已改名任务 · done · 1", { exact: true }).waitFor();
+    await page.evaluate(() => globalThis.__agentsSync.rename("b", "current", "远端任务"));
+    assert.equal(await label.innerText(), "已改名任务 · done · 1", "Peer Host with same Agent ID must not replace current name");
     await pill.click(); await matches(1, 6);
+    await page.getByTestId("agents-popover-footer").getByText("当前 · 已改名任务", { exact: true }).waitFor();
     await page.evaluate(() => globalThis.__agentsSync.unrelatedRemoval("a", "a3"));
     await matches(1, 6);
     await page.evaluate(() => globalThis.__agentsSync.emit("b", "completed", "running"));
@@ -53,7 +61,8 @@ try {
     // Switch Hosts with an old list in flight. A newer done event must survive it.
     await page.evaluate(() => { globalThis.__agentsSync.gateList("a"); globalThis.__agentsSync.setHost("b"); });
     await page.waitForFunction(() => typeof globalThis.__agentsSync.releaseList === "function");
-    await label.getByText("done · 1", { exact: true }).waitFor();
+    currentName = "远端任务";
+    await label.getByText("远端任务 · done · 1", { exact: true }).waitFor();
     await pill.click(); await matches(1, 6);
     await page.evaluate(() => globalThis.__agentsSync.emit("a", "shared-id", "idle", "finished"));
     await matches(2, 5);
@@ -64,7 +73,8 @@ try {
     await page.evaluate(() => { globalThis.__agentsSync.gateRpc(); void globalThis.__agentsSync.refresh(); });
     await page.waitForFunction(() => typeof globalThis.__agentsSync.releaseRpc === "function");
     await page.evaluate(() => globalThis.__agentsSync.setHost("a"));
-    await label.getByText("done · 2", { exact: true }).waitFor();
+    currentName = "已改名任务";
+    await label.getByText("已改名任务 · done · 2", { exact: true }).waitFor();
     await pill.click(); await matches(2, 5);
     await page.evaluate(() => globalThis.__agentsSync.releaseRpc());
     await matches(2, 5);
@@ -76,5 +86,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, desktop/mobile, subscription cleanup (mock APIs).");
+  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, current Agent name + rename sync, peer-name isolation, desktop/mobile, subscription cleanup (mock APIs).");
 } finally { await browser?.close(); if (server) await new Promise(done => server.close(done)); await rm(temporary, { recursive: true, force: true }); }

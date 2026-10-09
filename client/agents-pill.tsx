@@ -4,7 +4,7 @@ import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginC
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
-import { agentsPillState, combineAgentSources, type PillColorKind } from "../shared/agents-pill.ts";
+import { agentsPillState, combineAgentSources, formatAgentsPillLabel, type PillColorKind } from "../shared/agents-pill.ts";
 import { localAgentDirectory, retainHostAgents, useLocalAgents } from "./agents-directory.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
 
@@ -908,6 +908,8 @@ export function contributeAgentsPills(client: PluginClientContext) {
   injectScrollbarStyles();
   const pills = new Map<string, {
     workspaceId: string;
+    name: string;
+    state: ReturnType<typeof agentsPillState>;
     label: string;
     pill: ReturnType<PluginClientContext["addComposerPill"]>;
     remove: () => void;
@@ -920,15 +922,31 @@ export function contributeAgentsPills(client: PluginClientContext) {
     pills.delete(agentId);
   };
 
-  const mountAgentPill = (agentId: string, workspaceId: string) => {
-    if (pills.get(agentId)?.workspaceId === workspaceId) return;
+  const applyLabel = (entry: { name: string; state: ReturnType<typeof agentsPillState>; label: string; pill: ReturnType<PluginClientContext["addComposerPill"]> }) => {
+    const label = formatAgentsPillLabel(entry.name, entry.state);
+    if (entry.label === label) return;
+    entry.label = label;
+    entry.pill.update({ label });
+  };
+  const mountAgentPill = (agentId: string, workspaceId: string, title?: string | null) => {
+    const existing = pills.get(agentId);
+    if (existing?.workspaceId === workspaceId) {
+      if (typeof title === "string" || title === null) {
+        existing.name = title?.trim() || agentId.slice(0, 8);
+        applyLabel(existing);
+      }
+      return;
+    }
     remove(agentId);
+    const name = title?.trim() || agentId.slice(0, 8);
+    const state: ReturnType<typeof agentsPillState> = { label: "loading", colorKind: "unknown" };
+    const label = formatAgentsPillLabel(name, state);
     let pill: ReturnType<PluginClientContext["addComposerPill"]>;
     const publishState = (state: ReturnType<typeof agentsPillState>) => {
       const entry = pills.get(agentId);
-      if (stopped || !entry || entry.pill !== pill || entry.label === state.label) return;
-      entry.label = state.label;
-      pill.update({ label: state.label });
+      if (stopped || !entry || entry.pill !== pill) return;
+      entry.state = state;
+      applyLabel(entry);
     };
     // The rendered icon observes exactly the same directory as the popover.
     // Its snapshot drives BOTH the dot and the registration's text.
@@ -940,15 +958,15 @@ export function contributeAgentsPills(client: PluginClientContext) {
       button: {
         title: "当前会话与 Agents",
         icon: Icon,
-        label: "loading",
+        label,
         behavior: { kind: "popover", Content: AgentsPopover },
       },
     });
-    pills.set(agentId, { workspaceId, label: "loading", pill, remove: () => pill.remove() });
+    pills.set(agentId, { workspaceId, name, state, label, pill, remove: () => pill.remove() });
   };
 
-  const upsert = (agent: { id: string; workspaceId?: string }) => {
-    if (agent.workspaceId) mountAgentPill(agent.id, agent.workspaceId);
+  const upsert = (agent: { id: string; workspaceId?: string; title?: string | null }) => {
+    if (agent.workspaceId) mountAgentPill(agent.id, agent.workspaceId, agent.title);
     else remove(agent.id);
   };
   const unsubscribe = client.paseo.agents.subscribe((update) => {
