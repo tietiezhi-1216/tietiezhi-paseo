@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
@@ -12,70 +12,11 @@ function cleanModelLabel(model: string): string {
 
 /**
  * 1. 会话单轮性能徽章：
- * 安全融入原生操作栏同一行（紧随在 ⧉ 复制、⤢ 工作树分叉、工作时间 右侧展示）
- * 消除多余空行，保证原生分叉菜单与复制功能 100% 健全可用！
+ * 采用 Paseo / Beautiful-Chat 标准的声明式 Timeline 徽章。
+ * 纯 React Native 原语渲染，绝不操作底层 DOM，确保虚拟化消息流绝对稳定、历史记录顺畅加载。
  */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
-  const badgeRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const el = badgeRef.current as HTMLElement | null;
-    if (!el) return;
-
-    let attached = false;
-
-    const attachToNativeFooter = () => {
-      // 向上寻找当前 item 所在的行容器
-      let row = el.parentElement;
-      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
-        if (row.nextElementSibling) break;
-        row = row.parentElement;
-      }
-      if (!row) return false;
-
-      // 寻找紧邻的下一个原生 footer 行
-      let next = row.nextElementSibling as HTMLElement | null;
-      let targetSlot: HTMLElement | null = null;
-
-      for (let i = 0; i < 4 && next; i++) {
-        // 原生 footer 是一个带有复制/分叉按钮或“工作了”的水平 flex 容器
-        const slot = next.querySelector<HTMLElement>("[data-testid='turn-working-indicator'], [data-testid*='turn']")
-          || next.querySelector<HTMLElement>("button")?.parentElement
-          || (next.innerText?.includes("工作了") ? next : null);
-
-        if (slot) {
-          targetSlot = slot;
-          break;
-        }
-        next = next.nextElementSibling as HTMLElement | null;
-      }
-
-      if (targetSlot && el.parentElement !== targetSlot) {
-        // 确保原生 footer 为水平 flex 排布
-        targetSlot.style.setProperty("display", "flex", "important");
-        targetSlot.style.setProperty("flex-direction", "row", "important");
-        targetSlot.style.setProperty("align-items", "center", "important");
-        targetSlot.style.setProperty("flex-wrap", "wrap", "important");
-
-        // 将当前徽章追加进原生 footer 容器的最右侧！
-        targetSlot.appendChild(el);
-
-        // 将原本上一行的空白占位容器彻底塌缩，消除多余空行！
-        row.style.setProperty("display", "none", "important");
-        el.style.opacity = "1";
-        attached = true;
-        return true;
-      }
-      return false;
-    };
-
-    attachToNativeFooter();
-    const timers = [50, 150, 400, 1000].map((ms) => setTimeout(attachToNativeFooter, ms));
-    return () => { for (const t of timers) clearTimeout(t); };
-  }, []);
-
   if (!data || data.outputTokens <= 0) return null;
 
   const tpsColor = data.tps >= 50
@@ -90,19 +31,17 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
   return (
     <View
-      ref={badgeRef}
       style={{
         flexDirection: "row",
         alignItems: "center",
-        flexWrap: "nowrap",
-        gap: 5,
-        marginLeft: 6,
-        paddingVertical: 1,
-        opacity: 0.95,
+        flexWrap: "wrap",
+        gap: 6,
+        paddingVertical: 2,
+        marginTop: 2,
+        marginBottom: 2,
+        opacity: 0.9,
       }}
     >
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
-
       {/* ⚡ 整轮真实平均 TPS */}
       <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
