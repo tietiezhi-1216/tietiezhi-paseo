@@ -74,7 +74,7 @@ paseo plugin update tietiezhi
 ### Agents 胶囊
 
 - 胶囊文字、状态圆点和弹窗共用按 Host 隔离的实时目录；数量按 Host + Agent ID 去重，已连接 Host 的实时数据优先于配置缓存。
-- 显示优先级 `done → error → working → idle → closed`，只显示状态与该状态数量；当前会话名保留在弹窗底部。搜索仅过滤列表，不改变全局汇总数量。
+- 显示格式「当前 Agent 名 · 状态 · 数量」，名称过长会缩短且改名实时同步；当前会话名也保留在弹窗底部。汇总状态优先级 `done → error → working → idle → closed`，搜索仅过滤列表，不改变全局汇总数量。
 - 使用独立 owned subscription，避免其他筛选视图的 remove 事件误归档 Agent。列表分页完整读取，晚返回的列表不能覆盖更新的完成/归档事件；最后一个读取者离开时释放订阅和计时器。
 - `npm run test:ui` 包含实际胶囊注册、图标及弹窗渲染的跨 Host 模拟回归（不是实际远端 Host 验收）。
 

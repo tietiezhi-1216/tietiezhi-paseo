@@ -2,6 +2,18 @@ import { agentDisplaySection, combineOwnedAgents, type RemoteAgent } from "./age
 
 export type PillColorKind = "success" | "failure" | "running" | "unknown";
 
+export function formatAgentsPillLabel(name: string, state: Pick<ReturnType<typeof agentsPillState>, "label">): string {
+  const clean = name.trim();
+  let short = "", width = 0;
+  for (const character of clean) {
+    const nextWidth = character.codePointAt(0)! > 127 ? 2 : 1;
+    if (width + nextWidth > 12) { short += "…"; break; }
+    width += nextWidth;
+    short += character;
+  }
+  return short ? `${short} · ${state.label}` : state.label;
+}
+
 export function agentsPillState(
   agents: readonly RemoteAgent[] | undefined,
   pending: boolean,

@@ -70,6 +70,7 @@ function App() {
     setHost: id => { setOpen(false); setHost(id); }, light: setLight,
     emit: (host, id, status, attentionReason = null) => emit(host, native(id, { status, attentionReason, requiresAttention: attentionReason === "finished" })),
     archive: (host, id) => emit(host, rows[host].find(row => row.id === id), true),
+    rename: (host, id, title) => emit(host, { ...rows[host].find(row => row.id === id), title }),
     unrelatedRemoval: (host, id) => { for (const listener of listeners[host]) listener({ kind: "remove", agentId: id }); },
     stop: () => { setOpen(false); setActive(false); },
     gateList: hostId => { listGate = { hostId }; },

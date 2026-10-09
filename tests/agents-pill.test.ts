@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentsPillState } from "../shared/agents-pill.ts";
+import { agentsPillState, formatAgentsPillLabel } from "../shared/agents-pill.ts";
 import type { RemoteAgent } from "../shared/agents.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -20,6 +20,14 @@ function agent(id: string, extra: Partial<RemoteAgent> = {}): RemoteAgent {
 const done = (id: string) => agent(id, { requiresAttention: true, attentionReason: "finished" });
 const working = (id: string) => agent(id, { status: "running" });
 const error = (id: string) => agent(id, { status: "error" });
+
+test("胶囊恢复当前 Agent 名，状态数量保持汇总值，长名称不会挤掉状态", () => {
+  assert.equal(formatAgentsPillLabel("插件开发", { label: "working · 6" }), "插件开发 · working · 6");
+  assert.equal(formatAgentsPillLabel("插件开发", { label: "done · 1" }), "插件开发 · done · 1");
+  assert.equal(formatAgentsPillLabel("  当前项目启动一下给我看看  ", { label: "done · 2" }), "当前项目启动… · done · 2");
+  assert.equal(formatAgentsPillLabel("abcdefghijklmnop", { label: "idle · 3" }), "abcdefghijkl… · idle · 3");
+  assert.equal(formatAgentsPillLabel("", { label: "loading" }), "loading");
+});
 
 test("Agents 胶囊有 done 时优先展示完成数量与绿色，即使存在 working 和 error", () => {
   const rows = [working("w1"), done("d1"), error("e1"), working("w2"), done("d2"), agent("idle")];
@@ -69,10 +77,11 @@ test("Composer Pill 注册不再独立查询或猜测 working，等待同源图�
     const labels: string[] = [];
     const registered: string[] = [];
     let directRpcCalls = 0;
+    let onUpdate: (update: unknown) => void = () => {};
     stop = contributeAgentsPills({
       rpc: async () => { directRpcCalls++; return { agents: [working("stale")], hosts: [] }; },
       paseo: { agents: {
-        subscribe: () => () => {},
+        subscribe: (handler: (update: unknown) => void) => { onUpdate = handler; return () => {}; },
         list: async () => ({ entries: [{ agent: { ...agent("current"), title: "当前会话" } }], pageInfo: { hasMore: false } }),
       } },
       addComposerPill: (input: { button: { label: string } }) => {
@@ -81,8 +90,10 @@ test("Composer Pill 注册不再独立查询或猜测 working，等待同源图�
       },
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.deepEqual(registered, ["loading"]);
+    assert.deepEqual(registered, ["当前会话 · loading"]);
     assert.deepEqual(labels, []);
+    onUpdate({ kind: "upsert", agent: { ...agent("current"), title: "已改名任务" } });
+    assert.deepEqual(labels, ["已改名任务 · loading"]);
     assert.equal(directRpcCalls, 0);
   } finally {
     stop?.();
