@@ -738,11 +738,17 @@ function AgentsPopover(props: PluginButtonContentProps) {
     injectScrollbarStyles();
   }, []);
   const paseo = usePaseo();
+  const reloadRpc = useRpc(agentReload);
+  const archiveRpc = useRpc(agentArchive);
+  const unarchiveRpc = useRpc(agentUnarchive);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<TextInput>(null);
   const searchFocused = useRef(false);
+  const [currentReloading, setCurrentReloading] = useState(false);
+  const [currentArchiving, setCurrentArchiving] = useState(false);
+  const [currentNote, setCurrentNote] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -750,7 +756,6 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const timers = [50, 150].map((ms) => setTimeout(focus, ms));
     return () => { alive = false; for (const timer of timers) clearTimeout(timer); };
   }, []);
-  const unarchiveRpc = useRpc(agentUnarchive);
   const selectAgent = (agent: RemoteAgent) => {
     if (agent.archivedAt) {
       const local = Boolean(agent.serverId) && agent.serverId === props.host.id;
@@ -779,6 +784,68 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
   const [copiedCurrent, setCopiedCurrent] = useState(false);
   const popoverRef = useRef<any>(null);
+
+  const handleCurrentReload = () => {
+    if (!currentAgentId || currentReloading) return;
+    setCurrentReloading(true);
+    const targetAgent = currentAgent ?? {
+      id: currentAgentId,
+      hostId: props.host.id,
+      serverId: props.host.id,
+      name: currentTitle,
+    };
+    reloadRpc({
+      hostId: targetAgent.hostId || props.host.id,
+      serverId: targetAgent.serverId || props.host.id,
+      agentId: currentAgentId,
+    })
+      .then(() => {
+        setCurrentNote("已重载");
+        setTimeout(() => setCurrentNote(null), 2000);
+      })
+      .catch((err: unknown) => {
+        setCurrentNote(err instanceof Error ? err.message : "重载失败");
+        setTimeout(() => setCurrentNote(null), 3000);
+      })
+      .finally(() => {
+        setCurrentReloading(false);
+      });
+  };
+
+  const handleCurrentArchive = () => {
+    if (!currentAgentId || currentArchiving) return;
+    setCurrentArchiving(true);
+    const targetAgent = currentAgent ?? {
+      id: currentAgentId,
+      hostId: props.host.id,
+      serverId: props.host.id,
+      name: currentTitle,
+    };
+    const local = Boolean(targetAgent.serverId) && targetAgent.serverId === props.host.id;
+    const request = local
+      ? paseo.agents.ref(currentAgentId).archive()
+      : getPaseoClient(targetAgent.serverId || props.host.id).agents.ref(currentAgentId).archive();
+    Promise.resolve(request)
+      .then(() => {
+        const existing = localAgentMap.get(currentAgentId);
+        if (existing) {
+          localAgentMap.set(currentAgentId, { ...existing, archivedAt: new Date().toISOString() });
+          publishLocalAgents();
+        }
+        setCurrentNote("已归档");
+        setTimeout(() => {
+          setCurrentNote(null);
+          props.close();
+        }, 800);
+      })
+      .catch((err: unknown) => {
+        setCurrentNote(err instanceof Error ? err.message : "归档失败");
+        setTimeout(() => setCurrentNote(null), 3000);
+      })
+      .finally(() => {
+        setCurrentArchiving(false);
+      });
+  };
 
   useEffect(() => {
     injectScrollbarStyles();
@@ -940,31 +1007,69 @@ function AgentsPopover(props: PluginButtonContentProps) {
         }}
       >
         <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 12, fontWeight: "600", flex: 1 }}>
-          当前 · {currentTitle}
+          当前 · {currentNote ? `${currentTitle} (${currentNote})` : currentTitle}
         </Text>
         {currentAgentId ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="复制当前 Agent ID"
-            onPress={() => {
-              void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
-                setCopiedCurrent(true);
-                setTimeout(() => setCopiedCurrent(false), 1500);
-              }).catch(() => {});
-            }}
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 5,
-              backgroundColor: props.theme.colors.surface1,
-              borderWidth: 1,
-              borderColor: props.theme.colors.border,
-            }}
-          >
-            <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>
-              {copiedCurrent ? "已复制" : "复制 ID"}
-            </Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="归档当前 Agent"
+              disabled={currentArchiving}
+              onPress={handleCurrentArchive}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 5,
+                backgroundColor: props.theme.colors.surface1,
+                borderWidth: 1,
+                borderColor: props.theme.colors.border,
+              }}
+            >
+              <Text style={{ color: props.theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>
+                {currentArchiving ? "归档中" : "归档"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="重载当前 Agent"
+              disabled={currentReloading}
+              onPress={handleCurrentReload}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 5,
+                backgroundColor: props.theme.colors.surface1,
+                borderWidth: 1,
+                borderColor: props.theme.colors.border,
+              }}
+            >
+              <Text style={{ color: props.theme.colors.accent, fontSize: 10, fontWeight: "700" }}>
+                {currentReloading ? "重载中" : "重载"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="复制当前 Agent ID"
+              onPress={() => {
+                void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
+                  setCopiedCurrent(true);
+                  setTimeout(() => setCopiedCurrent(false), 1500);
+                }).catch(() => {});
+              }}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 5,
+                backgroundColor: props.theme.colors.surface1,
+                borderWidth: 1,
+                borderColor: props.theme.colors.border,
+              }}
+            >
+              <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>
+                {copiedCurrent ? "已复制" : "复制 ID"}
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
     </View>
