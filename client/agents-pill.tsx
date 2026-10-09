@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Dimensions, Easing, Linking, Pressable, Sc
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentLifecycleInput, AGENT_LIFECYCLE_LABELS, type AgentLifecycleOperation, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { agentsPillState, combineAgentSources, formatAgentsPillLabel, type PillColorKind } from "../shared/agents-pill.ts";
 import { localAgentDirectory, retainHostAgents, useLocalAgents } from "./agents-directory.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
@@ -140,6 +140,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const [reloadNote, setReloadNote] = useState<string | null>(null);
   const [passwordPrompt, setPasswordPrompt] = useState<{
     agent: RemoteAgent;
+    operation: AgentLifecycleOperation;
     needsTarget?: boolean;
     error?: string;
   } | null>(null);
@@ -152,14 +153,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     if (reloadingId) return;
     setReloadingId(agent.id);
     setReloadNote(null);
-    reloadRpc({
-      hostId: agent.hostId,
-      serverId: agent.serverId,
-      agentId: agent.id,
-      password: customPassword,
-      target: customTarget,
-      savePassword: rememberPassword,
-    })
+    reloadRpc(agentLifecycleInput(agent, currentServerId, { password: customPassword, target: customTarget, savePassword: rememberPassword }))
       .then(() => {
         setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已重载`);
         setPasswordPrompt(null);
@@ -168,10 +162,11 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
-        if (/password|密码|incorrect|auth/i.test(msg)) {
+        if ((agent.serverId || agent.hostId) !== currentServerId && /password|密码|incorrect|auth/i.test(msg)) {
           const needsTarget = /尚未配置连接密码与地址/i.test(msg);
           setPasswordPrompt({
             agent,
+            operation: "reload",
             needsTarget,
             error: customPassword ? "密码错误或连接失败，请重新输入" : undefined,
           });
@@ -186,23 +181,25 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       });
   };
 
-  const archiveAgent = (agent: RemoteAgent) => {
+  const archiveAgent = (agent: RemoteAgent, customPassword?: string, customTarget?: string) => {
     if (archivingId) return;
     setArchivingId(agent.id);
     setReloadNote(null);
     const local = Boolean(agent.serverId) && agent.serverId === currentServerId;
-    const request = Promise.resolve().then(() => local
-      ? paseo.agents.ref(agent.id).archive()
-      : getPaseoClient(agent.serverId || agent.hostId).agents.ref(agent.id).archive());
+    const request = Promise.resolve().then<unknown>(() => customPassword !== undefined || customTarget
+      ? archiveRpc(agentLifecycleInput(agent, currentServerId, { password: customPassword, target: customTarget, savePassword: rememberPassword }))
+      : local ? paseo.agents.ref(agent.id).archive() : getPaseoClient(agent.serverId || agent.hostId).agents.ref(agent.id).archive());
     void Promise.resolve(request).then(() => {
       localAgentDirectory.archive(agent.serverId || agent.hostId, agent.id);
       setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已归档`);
+      setPasswordPrompt(null); setPromptPassword(""); setPromptTarget("");
     }).catch((error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);
-      if (/password|密码|incorrect|auth/i.test(msg)) {
+      if (!local && /password|密码|incorrect|auth/i.test(msg)) {
         setPasswordPrompt({
-          agent,
-          error: "归档需要目标主机连接密码",
+          agent, operation: "archive",
+          needsTarget: /尚未配置连接密码与地址/i.test(msg),
+          error: customPassword ? "密码错误或连接失败，请重新输入" : "归档需要目标主机连接密码",
         });
         setReloadNote(null);
       } else {
@@ -210,24 +207,27 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       }
     }).finally(() => {
       setArchivingId((current) => current === agent.id ? null : current);
+      setSubmittingPassword(false);
     });
   };
 
-  const unarchiveAgent = (agent: RemoteAgent) => {
+  const unarchiveAgent = (agent: RemoteAgent, customPassword?: string, customTarget?: string) => {
     if (unarchivingId) return;
     setUnarchivingId(agent.id);
     setReloadNote(null);
-    unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id })
+    unarchiveRpc(agentLifecycleInput(agent, currentServerId, { password: customPassword, target: customTarget, savePassword: rememberPassword }))
       .then(() => {
         localAgentDirectory.patch(agent.serverId || agent.hostId, agent.id, { archivedAt: null, status: "idle" });
         setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
+        setPasswordPrompt(null); setPromptPassword(""); setPromptTarget("");
       })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
-        if (/password|密码|incorrect|auth/i.test(msg)) {
+        if ((agent.serverId || agent.hostId) !== currentServerId && /password|密码|incorrect|auth/i.test(msg)) {
           setPasswordPrompt({
-            agent,
-            error: "恢复需要目标主机连接密码",
+            agent, operation: "restore",
+            needsTarget: /尚未配置连接密码与地址/i.test(msg),
+            error: customPassword ? "密码错误或连接失败，请重新输入" : "恢复需要目标主机连接密码",
           });
           setReloadNote(null);
         } else {
@@ -236,7 +236,15 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       })
       .finally(() => {
         setUnarchivingId((current) => current === agent.id ? null : current);
+        setSubmittingPassword(false);
       });
+  };
+
+  const retryPasswordOperation = () => {
+    if (!passwordPrompt || !promptPassword || submittingPassword || (passwordPrompt.needsTarget && !promptTarget.trim())) return;
+    setSubmittingPassword(true);
+    const action = passwordPrompt.operation === "restore" ? unarchiveAgent : passwordPrompt.operation === "archive" ? archiveAgent : reloadAgent;
+    action(passwordPrompt.agent, promptPassword, promptTarget.trim() || undefined);
   };
 
   useEffect(() => {
@@ -371,12 +379,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
             placeholderTextColor={theme.colors.foregroundMuted}
             autoCapitalize="none"
             autoCorrect={false}
-            onSubmitEditing={() => {
-              if (promptPassword.trim() && !submittingPassword) {
-                setSubmittingPassword(true);
-                reloadAgent(passwordPrompt.agent, promptPassword.trim(), promptTarget.trim() || undefined);
-              }
-            }}
+            onSubmitEditing={retryPasswordOperation}
             style={{
               color: theme.colors.foreground,
               backgroundColor: theme.colors.surface2 ?? theme.colors.surface1,
@@ -417,23 +420,18 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
                 <Text style={{ color: theme.colors.foreground, fontSize: 11 }}>取消</Text>
               </Pressable>
               <Pressable
-                disabled={submittingPassword || !promptPassword.trim()}
-                onPress={() => {
-                  if (promptPassword.trim() && !submittingPassword) {
-                    setSubmittingPassword(true);
-                    reloadAgent(passwordPrompt.agent, promptPassword.trim(), promptTarget.trim() || undefined);
-                  }
-                }}
+                disabled={submittingPassword || !promptPassword || (passwordPrompt.needsTarget && !promptTarget.trim())}
+                onPress={retryPasswordOperation}
                 style={{
                   paddingHorizontal: 10,
                   paddingVertical: 5,
                   borderRadius: 5,
                   backgroundColor: theme.colors.accent,
-                  opacity: submittingPassword || !promptPassword.trim() ? 0.6 : 1,
+                  opacity: submittingPassword || !promptPassword || (passwordPrompt.needsTarget && !promptTarget.trim()) ? 0.6 : 1,
                 }}
               >
                 <Text style={{ color: theme.colors.surface1, fontSize: 11, fontWeight: "700" }}>
-                  {submittingPassword ? "重载中…" : "确认重载"}
+                  {submittingPassword ? `${AGENT_LIFECYCLE_LABELS[passwordPrompt.operation]}中…` : `确认${AGENT_LIFECYCLE_LABELS[passwordPrompt.operation]}`}
                 </Text>
               </Pressable>
             </View>
@@ -592,13 +590,12 @@ function AgentsPopover(props: PluginButtonContentProps) {
     const timers = [50, 150].map((ms) => setTimeout(focus, ms));
     return () => { alive = false; for (const timer of timers) clearTimeout(timer); };
   }, []);
-  const selectAgent = (agent: RemoteAgent) => {
-    if (agent.archivedAt) {
-      const local = Boolean(agent.serverId) && agent.serverId === props.host.id;
-      if (local) void paseo.agents.ref(agent.id).refresh().catch(() => {});
-      else void unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id }).catch(() => {});
-    }
+  const selectAgent = async (agent: RemoteAgent) => {
     try {
+      if (agent.archivedAt) {
+        await unarchiveRpc(agentLifecycleInput(agent, props.host.id));
+        localAgentDirectory.patch(agent.serverId || agent.hostId, agent.id, { archivedAt: null });
+      }
       prepareAgentNavigation(agent, {
         platform: props.layout.platform,
         currentServerId: props.host.id,

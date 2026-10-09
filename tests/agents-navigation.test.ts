@@ -89,7 +89,9 @@ test("the agents popover reuses the pill query so the first open is already popu
   assert.match(client, /搜索 Agent \/ 工作区 \/ ID/);
   assert.match(client, /需要主机密码/);
   assert.match(client, /请输入主机连接密码/);
-  assert.match(client, /确认重载/);
+  assert.match(client, /AGENT_LIFECYCLE_LABELS\[passwordPrompt\.operation\]/);
+  assert.match(client, /onSubmitEditing=\{retryPasswordOperation\}/);
+  assert.match(client, /onPress=\{retryPasswordOperation\}/);
 });
 
 test("agents pills observe future agents and release the directory subscription", () => {

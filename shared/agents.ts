@@ -290,6 +290,16 @@ export function resolveReloadHost<T extends { id: string; serverId?: string | nu
   return hosts.find((host) => host.serverId === serverId) ?? null;
 }
 
+export type AgentLifecycleOperation = "reload" | "archive" | "restore";
+export const AGENT_LIFECYCLE_LABELS = { reload: "重载", archive: "归档", restore: "恢复" } as const;
+export function agentLifecycleInput(
+  agent: { id: string; hostId: string; serverId?: string | null }, currentServerId: string,
+  credentials: { password?: string; target?: string; savePassword?: boolean } = {},
+) {
+  if (currentServerId && (agent.serverId || agent.hostId) === currentServerId) return { currentHost: true, agentId: agent.id };
+  return { currentHost: false, hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id, ...credentials };
+}
+
 export const agentReload = defineRpc({
   name: "slotgame.agent.reload",
   input: z.object({
@@ -310,9 +320,13 @@ export const agentReload = defineRpc({
 export const agentArchive = defineRpc({
   name: "slotgame.agent.archive",
   input: z.object({
+    currentHost: z.boolean().default(false),
     hostId: z.string().default(""),
     serverId: z.string().nullable().optional(),
     agentId: z.string().min(1),
+    password: z.string().optional(),
+    target: z.string().optional(),
+    savePassword: z.boolean().optional(),
   }),
   output: z.object({
     agentId: z.string(),
@@ -323,9 +337,13 @@ export const agentArchive = defineRpc({
 export const agentUnarchive = defineRpc({
   name: "slotgame.agent.unarchive",
   input: z.object({
+    currentHost: z.boolean().default(false),
     hostId: z.string().default(""),
     serverId: z.string().nullable().optional(),
     agentId: z.string().min(1),
+    password: z.string().optional(),
+    target: z.string().optional(),
+    savePassword: z.boolean().optional(),
   }),
   output: z.object({
     agentId: z.string(),

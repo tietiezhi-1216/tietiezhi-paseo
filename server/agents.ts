@@ -355,8 +355,8 @@ export async function reloadRemoteAgent(input: {
       password: input.password ?? "",
       serverId: input.serverId ?? undefined,
     };
-  } else if (host && input.password !== undefined) {
-    host = { ...host, password: input.password };
+  } else if (host && (input.password !== undefined || input.target)) {
+    host = { ...host, password: input.password ?? host.password, target: input.target || host.target };
   }
 
   if (host) {
@@ -377,6 +377,7 @@ export async function reloadRemoteAgent(input: {
     }
   }
 
+  if (input.hostId || input.serverId) throw new Error("PASSWORD_REQUIRED: 目标是远程设备，尚未配置连接密码与地址");
   let daemon: DaemonClient | null = null;
   try {
     daemon = await getLocalDaemonClient(input.password);
@@ -393,53 +394,30 @@ export async function reloadRemoteAgent(input: {
   return { agentId: input.agentId, hostId: "" };
 }
 
-export async function archiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
-  const hosts = configuredAgentHosts();
-  const host = resolveReloadHost(hosts, input);
-  try {
-    if (host) {
+type AgentLifecycleInput = Parameters<typeof reloadRemoteAgent>[0];
+export async function archiveRemoteAgent(input: AgentLifecycleInput, localPaseo?: PaseoApi) {
+  if (input.currentHost) {
+    if (!localPaseo || input.hostId || input.serverId || input.target || input.password !== undefined) throw new Error("当前设备归档不能混用远程连接参数");
+    await localPaseo.agents.ref(input.agentId).archive();
+  } else {
+    let host = resolveReloadHost(configuredAgentHosts(), input);
+    if (!host && input.target) host = { id: input.hostId || input.serverId || "custom-host", name: input.hostId || "Remote Host", target: input.target, password: input.password ?? "", serverId: input.serverId ?? undefined };
+    else if (host && (input.password !== undefined || input.target)) host = { ...host, password: input.password ?? host.password, target: input.target || host.target };
+    if (!host) throw new Error("PASSWORD_REQUIRED: 目标是远程设备，尚未配置连接密码与地址");
+    try {
       const entry = await ensureRemoteAgentClient(host);
       await entry.client.agents.ref(input.agentId).archive();
-    } else if (localPaseo) {
-      await localPaseo.agents.ref(input.agentId).archive();
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
-      throw new Error("目标主机需要密码或连接密码错误，请在主机设置中核对密码");
-    }
-    throw err;
+      if (input.password !== undefined && input.savePassword !== false) saveAgentHostConfig(host);
+    } catch (error) { throw reloadConnectionError(error); }
   }
   agentCache = null;
   return { agentId: input.agentId, archived: true };
 }
 
-export async function unarchiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
-  const hosts = configuredAgentHosts();
-  const host = resolveReloadHost(hosts, input);
-  try {
-    if (host) {
-      const entry = await ensureRemoteAgentClient(host);
-      await entry.daemon.refreshAgent(input.agentId);
-    } else {
-      const daemon = await getLocalDaemonClient();
-      try {
-        if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
-          throw new Error("目标是远程设备，尚未配置该设备的恢复通道；不会回退到本机。");
-        }
-        await daemon.refreshAgent(input.agentId);
-      } finally {
-        await daemon.close().catch(() => {});
-      }
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
-      throw new Error("目标主机需要密码或连接密码错误，请在主机设置中核对密码");
-    }
-    throw err;
-  }
-  agentCache = null;
+export async function unarchiveRemoteAgent(input: AgentLifecycleInput, localPaseo?: PaseoApi) {
+  // Runtime reload is the native restoration operation. Metadata ref.refresh()
+  // alone does not unarchive. Keep scope and credentials identical to reload.
+  await reloadRemoteAgent(input, localPaseo);
   return { agentId: input.agentId, unarchived: true };
 }
 

@@ -95,7 +95,16 @@ function App() {
       },
     });
   }, [hostId, active]);
-  const runtime = { hosts, paseo: apis[hostId], async rpc(name) {
+  const runtime = { hosts, paseo: apis[hostId], async rpc(name, input) {
+    if (name === "slotgame.agent.unarchive" || name === "slotgame.agent.reload") {
+      calls.push({ kind: "lifecycle", name, input });
+      const targetHost = input.currentHost ? hostId : input.serverId;
+      if (!input.currentHost && (!input.target || input.password !== " secret ")) throw new Error("PASSWORD_REQUIRED: 目标是远程设备，尚未配置连接密码与地址");
+      const row = rows[targetHost]?.find(row => row.id === input.agentId);
+      if (!row) throw new Error("Agent not found");
+      emit(targetHost, { ...row, archivedAt: null, status: "idle", attentionReason: "finished" });
+      return { agentId: row.id, unarchived: true, hostId: targetHost };
+    }
     if (name !== "slotgame.agent.activity") throw new Error("Unexpected RPC " + name);
     calls.push({ kind: "hook-rpc", hostId });
     const agents = [...rows.a.map(row => remote("a", row)), ...rows.b.map(row => remote("b", { ...row, status: "running", attentionReason: null }))];

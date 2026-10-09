@@ -78,6 +78,26 @@ try {
     await pill.click(); await matches(2, 5);
     await page.evaluate(() => globalThis.__agentsSync.releaseRpc());
     await matches(2, 5);
+    // Restore on the selected Host must not open the old password/guessed-address path.
+    const search = page.getByPlaceholder("搜索 Agent / 工作区 / ID");
+    await search.fill("archived");
+    await page.getByRole("button", { name: "恢复 Agent archived", exact: true }).click();
+    await page.getByText("archived 已恢复", { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => globalThis.__agentsSync.calls.filter(call => call.kind === "lifecycle").at(-1)), { kind: "lifecycle", name: "slotgame.agent.unarchive", input: { currentHost: true, agentId: "archived" } });
+    // Password confirmation and Enter must retry RESTORE, not RELOAD, retaining credentials.
+    await page.evaluate(() => globalThis.__agentsSync.archive("b", "b3"));
+    await search.fill("b3");
+    await page.getByRole("button", { name: "恢复 Agent b3", exact: true }).click();
+    const confirm = page.getByText("确认恢复", { exact: true });
+    await confirm.waitFor();
+    await page.getByPlaceholder("主机地址 (如 ws://192.168.1.x:6767)").fill("ws://remote:6767");
+    const password = page.getByPlaceholder("请输入主机连接密码");
+    await password.fill(" secret ");
+    if (mobile) await password.press("Enter"); else await confirm.click();
+    await page.getByText("b3 已恢复", { exact: true }).waitFor();
+    const lifecycle = await page.evaluate(() => globalThis.__agentsSync.calls.filter(call => call.kind === "lifecycle"));
+    assert.equal(lifecycle.every(call => call.name === "slotgame.agent.unarchive"), true, "restore retries must never invoke reload RPC");
+    assert.deepEqual(lifecycle.at(-1).input, { currentHost: false, hostId: "b", serverId: "b", agentId: "b3", password: " secret ", target: "ws://remote:6767", savePassword: true });
     await mkdir(join(root, ".artifacts/ui"), { recursive: true });
     await page.screenshot({ path: join(root, `.artifacts/ui/agents-sync-${mobile ? "mobile-light" : "desktop-dark"}.png`) });
     await page.evaluate(() => globalThis.__agentsSync.stop());
@@ -86,5 +106,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, current Agent name + rename sync, peer-name isolation, desktop/mobile, subscription cleanup (mock APIs).");
+  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, current Agent name + rename sync, peer-name isolation, current-host restore, operation-aware password/Enter retries, desktop/mobile, subscription cleanup (mock APIs).");
 } finally { await browser?.close(); if (server) await new Promise(done => server.close(done)); await rm(temporary, { recursive: true, force: true }); }
