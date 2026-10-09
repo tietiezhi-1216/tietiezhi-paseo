@@ -309,11 +309,19 @@ export async function reloadRemoteAgent(input: {
 export async function archiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
   const hosts = configuredAgentHosts();
   const host = resolveReloadHost(hosts, input);
-  if (host) {
-    const entry = await ensureRemoteAgentClient(host);
-    await entry.client.agents.ref(input.agentId).archive();
-  } else if (localPaseo) {
-    await localPaseo.agents.ref(input.agentId).archive();
+  try {
+    if (host) {
+      const entry = await ensureRemoteAgentClient(host);
+      await entry.client.agents.ref(input.agentId).archive();
+    } else if (localPaseo) {
+      await localPaseo.agents.ref(input.agentId).archive();
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+      throw new Error("目标主机需要密码或连接密码错误，请在主机设置中核对密码");
+    }
+    throw err;
   }
   agentCache = null;
   return { agentId: input.agentId, archived: true };
@@ -322,19 +330,27 @@ export async function archiveRemoteAgent(input: { hostId?: string; serverId?: st
 export async function unarchiveRemoteAgent(input: { hostId?: string; serverId?: string | null; agentId: string }, localPaseo?: PaseoApi) {
   const hosts = configuredAgentHosts();
   const host = resolveReloadHost(hosts, input);
-  if (host) {
-    const entry = await ensureRemoteAgentClient(host);
-    await entry.daemon.refreshAgent(input.agentId);
-  } else {
-    const daemon = await getLocalDaemonClient();
-    try {
-      if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
-        throw new Error("目标是远程设备，尚未配置该设备的恢复通道；不会回退到本机。");
+  try {
+    if (host) {
+      const entry = await ensureRemoteAgentClient(host);
+      await entry.daemon.refreshAgent(input.agentId);
+    } else {
+      const daemon = await getLocalDaemonClient();
+      try {
+        if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
+          throw new Error("目标是远程设备，尚未配置该设备的恢复通道；不会回退到本机。");
+        }
+        await daemon.refreshAgent(input.agentId);
+      } finally {
+        await daemon.close().catch(() => {});
       }
-      await daemon.refreshAgent(input.agentId);
-    } finally {
-      await daemon.close().catch(() => {});
     }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+      throw new Error("目标主机需要密码或连接密码错误，请在主机设置中核对密码");
+    }
+    throw err;
   }
   agentCache = null;
   return { agentId: input.agentId, unarchived: true };
