@@ -7,6 +7,17 @@ type WebEvents = {
   removeEventListener?: (type: string, listener: WebListener, capture?: boolean) => void;
 };
 
+export function readWebStorage(key: string): string | null {
+  if (Platform.OS !== "web") return null;
+  try { return (globalThis as { localStorage?: { getItem(key: string): string | null } }).localStorage?.getItem(key) ?? null; }
+  catch { return null; }
+}
+export function writeWebStorage(key: string, value: string): void {
+  if (Platform.OS !== "web") return;
+  try { (globalThis as { localStorage?: { setItem(key: string, value: string): void } }).localStorage?.setItem(key, value); }
+  catch {}
+}
+
 export function watchWebPopoverDismiss(close: () => void): () => void {
   if (Platform.OS !== "web") return () => {};
   const web = globalThis as WebEvents;

@@ -172,7 +172,7 @@ function App() {
           quotas: targets.map((a) => ({
             accountId: a.id,
             plan: "Plus",
-            fetchedAt: 1791090000000,
+            fetchedAt: Date.now(),
             checkedAt: Date.now(),
             stale: quotaFailure,
             error: quotaFailure ? "模拟网络失败" : null,

@@ -1,7 +1,9 @@
 import type { Family } from "../shared/accounts.ts";
+import { fetchGrokBillingFallback } from "./grok-billing.ts";
 import type { QuotaWindow } from "../shared/quota.ts";
 type Rec = Record<string, unknown>;
-export type Fetcher = typeof fetch;
+import { quotaFetch, fetchWithQuotaProxy, type Fetcher } from "./quota-http.ts";
+export type { Fetcher } from "./quota-http.ts";
 const rec = (v: unknown): Rec => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Rec : {};
 const text = (v: unknown) => typeof v === "string" ? v : "";
 function num(v: unknown): number | null { return typeof v === "number" && Number.isFinite(v) ? v : null; }
@@ -14,43 +16,6 @@ export function normalizeWindow(id: string, label: string, used: unknown, reset:
   const p = percent(used);
   return p === null ? null : { id: id.slice(0, 200), label: label.slice(0, 100), usedPercent: p, resetAt: epoch(reset), pool };
 }
-function resolveProxyUrl(): string | null {
-  const env = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
-  if (env) return env;
-  if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
-    return `http://${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`;
-  }
-  return "http://127.0.0.1:12334";
-}
-
-let cachedProxyAgent: any = null;
-function getProxyAgent(): any {
-  if (cachedProxyAgent !== null) return cachedProxyAgent;
-  const proxyUrl = resolveProxyUrl();
-  if (!proxyUrl) return undefined;
-  try {
-    const { HttpsProxyAgent } = require("https-proxy-agent");
-    cachedProxyAgent = new HttpsProxyAgent(proxyUrl);
-    return cachedProxyAgent;
-  } catch {
-    return undefined;
-  }
-}
-
-let cachedDispatcher: any = null;
-function getDispatcher(): any {
-  if (cachedDispatcher !== null) return cachedDispatcher;
-  const proxyUrl = resolveProxyUrl();
-  if (!proxyUrl) return undefined;
-  try {
-    const { ProxyAgent } = require("undici");
-    cachedDispatcher = new ProxyAgent(proxyUrl);
-    return cachedDispatcher;
-  } catch {
-    return undefined;
-  }
-}
-
 const GOOGLE_CLIENT_ID =
   process.env.ANTIGRAVITY_CLIENT_ID ||
   Buffer.from("MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlc" + "C5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==", "base64").toString();
@@ -59,116 +24,36 @@ const GOOGLE_CLIENT_SECRET =
   Buffer.from("R09DU1BYLUs1OEZXUjQ" + "4NkxkTEoxbUxCOHNYQzR6NnFEQWY=", "base64").toString();
 
 const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 
 const XAI_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
-const XAI_TOKEN_URL = "https://auth.x.ai/oauth2/token";
 
-export async function refreshXaiToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
-  const agent = getProxyAgent();
-  const dispatcher = getDispatcher();
-  const execute = async (useProxy: boolean) => {
-    return await fetcher(XAI_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refresh,
-        client_id: XAI_CLIENT_ID,
-      }),
-      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
-      ...(useProxy && agent ? { agent } as any : {}),
-    });
-  };
-  try {
-    let response: Response;
-    try {
-      response = await execute(true);
-    } catch {
-      response = await execute(false);
-    }
-    if (!response.ok) return null;
-    const data = rec(await response.json());
-    const access = text(data.access_token);
-    const newRefresh = text(data.refresh_token) || refresh;
-    const expiresIn = num(data.expires_in) ?? 3600;
-    if (!access) return null;
-    return { access, refresh: newRefresh, expires: Date.now() + expiresIn * 1000 - 60_000 };
-  } catch {
-    return null;
-  }
+async function refreshOAuthToken(url: string, clientId: string, refresh: string, fetcher: Fetcher, signal?: AbortSignal, clientSecret?: string) {
+  const response = await fetchWithQuotaProxy(fetcher, url, {
+    method: "POST", signal: signal ?? AbortSignal.timeout(15_000),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token", refresh_token: refresh, client_id: clientId,
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
+    }),
+  });
+  if (!response.ok) return null;
+  const data = rec(await response.json());
+  const access = text(data.access_token);
+  if (!access) return null;
+  return { access, refresh: text(data.refresh_token) || refresh,
+    expires: Date.now() + (num(data.expires_in) ?? 3600) * 1000 - 60_000 };
 }
-
-export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; refresh: string; expires: number } | null> {
-  const agent = getProxyAgent();
-  const dispatcher = getDispatcher();
-  const execute = async (useProxy: boolean) => {
-    return await fetcher(OPENAI_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refresh,
-        client_id: OPENAI_CLIENT_ID,
-      }),
-      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
-      ...(useProxy && agent ? { agent } as any : {}),
-    });
-  };
-  try {
-    let response;
-    try {
-      response = await execute(true);
-    } catch {
-      // If proxy connection failed (e.g. proxy port not listening on this device), fallback to direct connection
-      response = await execute(false);
-    }
-    if (!response.ok) return null;
-    const data = rec(await response.json());
-    const access = text(data.access_token);
-    const newRefresh = text(data.refresh_token) || refresh;
-    const expiresIn = num(data.expires_in) ?? 864000;
-    if (!access) return null;
-    return { access, refresh: newRefresh, expires: Date.now() + expiresIn * 1000 - 60_000 };
-  } catch {
-    return null;
-  }
+export async function refreshXaiToken(refresh: string, fetcher: Fetcher = quotaFetch, signal?: AbortSignal) {
+  try { return await refreshOAuthToken("https://auth.x.ai/oauth2/token", XAI_CLIENT_ID, refresh, fetcher, signal); }
+  catch { return null; }
 }
-
-export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = fetch): Promise<{ access: string; expires: number } | null> {
-  const agent = getProxyAgent();
-  const dispatcher = getDispatcher();
-  const execute = async (useProxy: boolean) => {
-    return await fetcher("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: refresh,
-        grant_type: "refresh_token",
-      }),
-      ...(useProxy && dispatcher ? { dispatcher } as any : {}),
-      ...(useProxy && agent ? { agent } as any : {}),
-    });
-  };
-  try {
-    let response;
-    try {
-      response = await execute(true);
-    } catch {
-      // Fallback to direct connection if proxy failed on remote machine
-      response = await execute(false);
-    }
-    if (!response.ok) return null;
-    const data = rec(await response.json());
-    const access = text(data.access_token);
-    const expiresIn = num(data.expires_in) ?? 3600;
-    if (!access) return null;
-    return { access, expires: Date.now() + expiresIn * 1000 - 60_000 };
-  } catch {
-    return null;
-  }
+export async function refreshOpenAICodexToken(refresh: string, fetcher: Fetcher = quotaFetch, signal?: AbortSignal) {
+  try { return await refreshOAuthToken("https://auth.openai.com/oauth/token", OPENAI_CLIENT_ID, refresh, fetcher, signal); }
+  catch { return null; }
+}
+export async function refreshGoogleToken(refresh: string, fetcher: Fetcher = quotaFetch, signal?: AbortSignal) {
+  try { return await refreshOAuthToken("https://oauth2.googleapis.com/token", GOOGLE_CLIENT_ID, refresh, fetcher, signal, GOOGLE_CLIENT_SECRET); }
+  catch { return null; }
 }
 
 export async function fetchProviderQuota(family: Family, credential: Rec, fetcher: Fetcher, signal: AbortSignal): Promise<{ windows: QuotaWindow[]; plan: string | null }> {
@@ -179,7 +64,7 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
 
   // Auto-refresh expired Antigravity Google OAuth token
   if (family === "antigravity" && refreshToken && (!token || (expiresAt !== null && expiresAt <= Date.now() + 30_000))) {
-    const refreshed = await refreshGoogleToken(refreshToken, fetcher);
+    const refreshed = await refreshGoogleToken(refreshToken, fetcher, signal);
     if (refreshed) {
       token = refreshed.access;
       credential.access = refreshed.access;
@@ -189,7 +74,7 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
 
   // Auto-refresh expired OpenAI Codex OAuth token
   if (family === "codex" && refreshToken && (!token || (expiresAt !== null && expiresAt <= Date.now() + 30_000))) {
-    const refreshed = await refreshOpenAICodexToken(refreshToken, fetcher);
+    const refreshed = await refreshOpenAICodexToken(refreshToken, fetcher, signal);
     if (refreshed) {
       token = refreshed.access;
       credential.access = refreshed.access;
@@ -200,7 +85,7 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
 
   // Auto-refresh expired xAI Grok OAuth token
   if (family === "xai" && refreshToken && (!token || (expiresAt !== null && expiresAt <= Date.now() + 30_000))) {
-    const refreshed = await refreshXaiToken(refreshToken, fetcher);
+    const refreshed = await refreshXaiToken(refreshToken, fetcher, signal);
     if (refreshed) {
       token = refreshed.access;
       credential.access = refreshed.access;
@@ -212,85 +97,20 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
   if (!token || token.startsWith("!")) throw new Error("此授权类型不支持额度查询");
 
   const request = async (url: string, init: RequestInit = {}) => {
-    const agent = getProxyAgent();
-    const dispatcher = getDispatcher();
-    const fetchInit: any = {
-      ...init,
-      redirect: "error",
-      signal,
+    const send = () => fetchWithQuotaProxy(fetcher, url, {
+      ...init, redirect: "error", signal,
       headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
-      ...(dispatcher ? { dispatcher } : {}),
-      ...(agent ? { agent } : {}),
-    };
-    let response: Response;
-    try {
-      response = await fetcher(url, fetchInit);
-    } catch (err) {
-      if (dispatcher || agent) {
-        // Fallback to direct connection if proxy fails on this machine
-        response = await fetcher(url, { ...init, redirect: "error", signal, headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers } });
-      } else {
-        throw err;
-      }
-    }
-    if (response.status === 401) {
-      if (family === "antigravity" && refreshToken) {
-        const refreshed = await refreshGoogleToken(refreshToken, fetcher);
-        if (refreshed) {
-          token = refreshed.access;
-          credential.access = refreshed.access;
-          credential.expires = refreshed.expires;
-          response = await fetcher(url, {
-            ...init,
-            redirect: "error",
-            signal,
-            headers: { Authorization: "Bearer " + token, Accept: "application/json", ...init.headers },
-            ...(dispatcher ? { dispatcher } : {}),
-            ...(agent ? { agent } : {}),
-          });
-        }
-      } else if (family === "codex" && refreshToken) {
-        const refreshed = await refreshOpenAICodexToken(refreshToken, fetcher);
-        if (refreshed) {
-          token = refreshed.access;
-          credential.access = refreshed.access;
-          credential.refresh = refreshed.refresh;
-          credential.expires = refreshed.expires;
-          response = await fetcher(url, {
-            ...init,
-            redirect: "error",
-            signal,
-            headers: {
-              Authorization: "Bearer " + token,
-              Accept: "application/json",
-              ...(text(credential.accountId) ? { "ChatGPT-Account-Id": text(credential.accountId) } : {}),
-              ...init.headers,
-            },
-            ...(dispatcher ? { dispatcher } : {}),
-            ...(agent ? { agent } : {}),
-          });
-        }
-      } else if (family === "xai" && refreshToken) {
-        const refreshed = await refreshXaiToken(refreshToken, fetcher);
-        if (refreshed) {
-          token = refreshed.access;
-          credential.access = refreshed.access;
-          credential.refresh = refreshed.refresh;
-          credential.expires = refreshed.expires;
-          response = await fetcher(url, {
-            ...init,
-            redirect: "error",
-            signal,
-            headers: {
-              Authorization: "Bearer " + token,
-              Accept: "application/json",
-              "X-XAI-Token-Auth": "xai-grok-cli",
-              ...init.headers,
-            },
-            ...(dispatcher ? { dispatcher } : {}),
-            ...(agent ? { agent } : {}),
-          });
-        }
+    });
+    let response = await send();
+    if (response.status === 401 && refreshToken && !signal.aborted) {
+      const refreshed = family === "codex"
+        ? await refreshOpenAICodexToken(refreshToken, fetcher, signal)
+        : family === "xai" ? await refreshXaiToken(refreshToken, fetcher, signal)
+        : await refreshGoogleToken(refreshToken, fetcher, signal);
+      if (refreshed) {
+        token = refreshed.access;
+        Object.assign(credential, refreshed);
+        response = await send();
       }
     }
     if (!response.ok) throw new Error(response.status === 401 ? "授权已失效，请在 Pi 续期或重新登录" : "额度接口 HTTP " + response.status);
@@ -319,9 +139,25 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
     const config = rec(body.config);
     const products = Array.isArray(config.productUsage) ? config.productUsage.map(rec) : [];
     const product = products.find((p) => /grokbuild/i.test(text(p.product)));
-    const used = product?.usagePercent ?? config.creditUsagePercent;
-    const w = normalizeWindow("billing", "账期", used, rec(config.currentPeriod).end ?? config.billingPeriodEnd);
-    if (w) windows.push(w);
+    // Prefer the actual shared-pool percentage; a missing REST value is not zero.
+    let used = num(config.creditUsagePercent) ?? num(product?.usagePercent);
+    const period = rec(config.currentPeriod);
+    let reset = epoch(period.end ?? config.billingPeriodEnd);
+    let usageSource: QuotaWindow["usageSource"] = "reported";
+    if (used === null) {
+      const reading = await fetchGrokBillingFallback(token, fetcher, signal);
+      const start = epoch(period.start), end = epoch(period.end);
+      const sameActivePeriod = reading && start != null && end != null
+        && reading.startAt != null && reading.resetAt != null
+        && Math.abs(reading.startAt - start) < 1000 && Math.abs(reading.resetAt - end) < 1000;
+      if (reading && (!reading.implicitZero || sameActivePeriod)) {
+        used = reading.usedPercent;
+        reset ??= reading.resetAt;
+        usageSource = reading.implicitZero ? "protobuf-default" : "reported";
+      }
+    }
+    const w = normalizeWindow("billing", "账期", used, reset);
+    if (w) windows.push({ ...w, usageSource });
     plan = "Grok";
 
   } else {
@@ -343,7 +179,7 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
       project = text(info.cloudaicompanionProject ?? info.cloudAiCompanionProject ?? info.projectId);
     }
     if (!project) throw new Error("未提供 Antigravity project；请在 Pi 完成登录");
-    // Deliberately do not call onboardUser or refresh tokens.
+    // Read-only quota calls: never onboard or redeem reset credits.
     const [available, summary] = await Promise.all([
       upstream("fetchAvailableModels", { project }),
       upstream("retrieveUserQuotaSummary", {}).catch(() => ({})),
@@ -417,7 +253,7 @@ export function legacyQuotaWindows(value: unknown): QuotaWindow[] {
     const existingPool = w.pool === "gemini" || w.pool === "claude" ? (w.pool as "gemini" | "claude") : null;
     const pool = existingPool ?? (/gemini/i.test(label) ? "gemini" : /claude|gpt|anthropic/i.test(label) ? "claude" : "shared");
     const normalized = normalizeWindow(text(w.id) || `legacy-${windows.length}`, label, w.usedPercent, w.resetAt, pool);
-    if (normalized) windows.push(normalized);
+    if (normalized) windows.push({ ...normalized, ...(w.usageSource === "reported" || w.usageSource === "protobuf-default" ? { usageSource: w.usageSource } : {}) });
   }
   return windows.slice(0, 100);
 }

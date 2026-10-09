@@ -16,6 +16,7 @@ export const QuotaWindowSchema = z.object({
   id: z.string().max(200), label: z.string().max(100),
   usedPercent: z.number().min(0).max(100), resetAt: z.number().nullable(),
   pool: z.enum(["gemini", "claude", "shared"]),
+  usageSource: z.enum(["reported", "protobuf-default"]).optional(),
 });
 export type QuotaWindow = z.infer<typeof QuotaWindowSchema>;
 
@@ -44,7 +45,7 @@ export function legacyQuotaWindows(value: unknown): QuotaWindow[] {
     const existingPool = w.pool === "gemini" || w.pool === "claude" ? (w.pool as "gemini" | "claude") : null;
     const pool = existingPool ?? (/gemini/i.test(label) ? "gemini" : /claude|gpt|anthropic/i.test(label) ? "claude" : "shared");
     const normalized = normalizeWindow(text(w.id) || `legacy-${windows.length}`, label, w.usedPercent, w.resetAt, pool);
-    if (normalized) windows.push(normalized);
+    if (normalized) windows.push({ ...normalized, ...(w.usageSource === "reported" || w.usageSource === "protobuf-default" ? { usageSource: w.usageSource } : {}) });
   }
   return windows.slice(0, 100);
 }

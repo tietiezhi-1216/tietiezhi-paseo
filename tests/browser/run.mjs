@@ -189,8 +189,10 @@ try {
   await page.keyboard.press("Escape");
   await page.evaluate(() => globalThis.__preview.quotaFailure(true));
   await page.getByTestId("quota-footer-refresh").click();
-  await quotaLabel("Codex · 剩余 72%（缓存）", 72);
-  await panel.getByTestId("quota-account-card").first().getByText("72%", { exact: true }).waitFor();
+  await page.getByTestId("quota-footer-countdown").getByText("查询失败", { exact: true }).waitFor();
+  await panel.getByTestId("quota-account-card").first().getByText("查询失败", { exact: true }).waitFor();
+  assert.equal(await panel.getByTestId("quota-account-card").first().getByText("72%", { exact: true }).count(), 0);
+  assert.equal(await page.getByTestId("quota-footer-refresh").getByText("72%", { exact: true }).count(), 0);
   assert.equal(await panel.getByText("模拟网络失败", { exact: true }).count(), 0);
   assert.equal(await panel.getByTestId("quota-details").count(), 0);
   await page.keyboard.press("Escape");
@@ -203,7 +205,7 @@ try {
   await quotaLabel("Codex · 剩余 76%", 76);
   await page.evaluate(() => globalThis.__preview.offline());
   await quotaLabel("Codex · 剩余 76%（缓存）", 76);
-  assert.equal(await page.getByTestId("quota-footer-refresh").getAttribute("aria-disabled"), "true");
+  assert.notEqual(await page.getByTestId("quota-footer-refresh").getAttribute("aria-disabled"), "true", "offline quota entry still opens the explicitly cached panel");
   await footer.click(); await panel.getByText("离线 · 缓存", { exact: true }).waitFor();
   assert.equal(await panel.getByTestId("quota-account-card").count(), 2);
   assert.equal(await panel.getByTestId("quota-login").isDisabled(), true);

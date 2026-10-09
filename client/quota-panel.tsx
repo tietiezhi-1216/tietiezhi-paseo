@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useRpc, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, type Family } from "../shared/accounts.ts";
 import { getQuota, selectQuotaWindow, legacyQuotaWindows, type AccountQuota, type QuotaSnapshot, type QuotaWindow } from "../shared/quota.ts";
 import { quotaGroups } from "../shared/quota-groups.ts";
-import { timeUntilReset, readableResetCountdown, rollForwardResetAt } from "../shared/quota-footer-label.ts";
+import { timeUntilReset } from "../shared/quota-footer-label.ts";
+import { quotaPresentation } from "../shared/quota-state.ts";
 import { AccountsPanel } from "./accounts.tsx";
 import { Action, ChannelTabs, Notice, QuotaMeter, RemainingBar, hexAlpha } from "./ui.tsx";
-import { quotaFailureLabel, compactDateTime } from "../shared/ui-format.ts";
+import { compactDateTime } from "../shared/ui-format.ts";
 import { LoginPanel } from "./login.tsx";
-import { persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
+import { getPersistentQuota, updatePersistentQuotas } from "./quota-cache.ts";
 
 const CHANNEL_TABS = [
   ["codex", "Codex", "codex"], ["xai", "Grok", "xai"], ["antigravity", "Antigravity", "antigravity"],
@@ -19,7 +20,7 @@ const CHANNEL_TABS = [
 
 export function useQuota(hostId: string, family: Family | null, slot: string | null, all = false, enabled = true) {
   const rpc = useRpc(getQuota);
-  return useQuery<QuotaSnapshot>({
+  const query = useQuery<QuotaSnapshot>({
     queryKey: ["tietiezhi", "quota", hostId, family, slot, all],
     queryFn: async ({ signal }) => {
       if (!family || family === "go") throw new Error("此渠道已停用");
@@ -29,10 +30,21 @@ export function useQuota(hostId: string, family: Family | null, slot: string | n
     },
     enabled: enabled && family !== null && family !== "go",
     staleTime: 30_000, gcTime: 30 * 60_000, retry: false,
-    placeholderData: (previousData) => previousData?.family === family ? previousData : undefined,
+    placeholderData: (previousData, previousQuery) => previousQuery?.queryKey[2] === hostId
+      && previousQuery.queryKey[4] === slot && previousData?.family === family ? previousData : undefined,
     refetchInterval: enabled && family && family !== "go" ? 5 * 60_000 : false,
     refetchOnMount: "always",
   });
+  useEffect(() => {
+    // Check an authoritative reset immediately, in addition to the five-minute cadence.
+    // Past timestamps do not schedule a retry loop.
+    const resets = query.data?.quotas.flatMap((q) => q.windows)
+      .map((w) => w.resetAt).filter((at): at is number => at != null && at > Date.now()) ?? [];
+    if (!enabled || !resets.length) return;
+    const timer = setTimeout(() => { void query.refetch(); }, Math.min(2_147_483_647, Math.max(1, Math.min(...resets) - Date.now() + 50)));
+    return () => clearTimeout(timer);
+  }, [enabled, query.data, query.refetch]);
+  return query;
 }
 
 export function QuotaBar({ theme, window, testID }: { theme: PluginSurfaceProps["theme"]; window: QuotaWindow; testID?: string }) {
@@ -54,21 +66,9 @@ export function QuotaPanel(props: QuotaPanelProps) {
 
 function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: QuotaPanelProps & { family: Family; onFamilyChange(family: Family): void }) {
   const quota = useQuota(host.id, family, null, true);
-  const rpc = useRpc(getQuota);
   const queries = useQueryClient();
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const [loginOpen, setLoginOpen] = useState(false);
-  const refreshMutation = useMutation({
-    mutationFn: (selected: Family) => {
-      if (selected === "go") throw new Error("此渠道已停用");
-      return rpc({ family: selected, all: true, refresh: true });
-    },
-    onSuccess(result: QuotaSnapshot, selected: Family) {
-      updatePersistentQuotas(result.quotas, selected, result.currentAccountId);
-      queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, result);
-      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
-    },
-  });
   const cachedData = queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, true])
     ?? queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, family, null, false]);
   const data = (quota.data?.family === family ? quota.data : undefined)
@@ -77,14 +77,14 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
   const rows = accountsSnapshot?.accounts.filter((account: any) => account.family === family)
     ?? data?.snapshot.accounts.filter((account) => account.family === family)
     ?? [];
-  if (data?.quotas) {
-    updatePersistentQuotas(data.quotas, family, data.currentAccountId);
-  }
+  useEffect(() => {
+    if (data?.quotas) updatePersistentQuotas(host.id, data.quotas, family, data.currentAccountId);
+  }, [data, host.id, family]);
   const quotaFor = (account: Account): AccountQuota | undefined => {
     const live = data?.quotas.find((item) => item.accountId === account.id);
-    if (live && (live.windows.length > 0 || live.error)) return live;
-    const persistent = persistentQuotaStore[account.id];
-    if (persistent && (persistent.windows.length > 0 || persistent.error)) return persistent;
+    if (live) return live;
+    const persistent = getPersistentQuota(host.id, account.id);
+    if (persistent) return persistent;
     if (account.cachedUsage) {
       const rawWindows = legacyQuotaWindows(account.cachedUsage).filter(
         (w) => account.family !== "antigravity" || w.pool !== "shared"
@@ -94,7 +94,7 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
           accountId: account.id,
           windows: rawWindows,
           plan: account.plan,
-          fetchedAt: null,
+          fetchedAt: account.cachedAt ?? null,
           checkedAt: null,
           stale: true,
           error: null,
@@ -155,23 +155,12 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
               );
             }
             const q = quotaFor(account);
-            if (q?.error && /授权已失效|401|登录/.test(q.error)) {
-              return (
-                <Text style={{ color: theme.colors.statusWarning, fontSize: 11, fontWeight: "600" }}>
-                  需登录
-                </Text>
-              );
-            }
-            const window = selectQuotaWindow(account.family, null, q?.windows ?? []);
-            if (!window) {
-              return (
-                <Text style={{ color: account.active ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 11, fontWeight: account.active ? "600" : "500" }}>
-                  {account.active ? "✓ 默认" : "切换"}
-                </Text>
-              );
-            }
+            const state = quotaPresentation(q, Date.now(), quota.isFetching);
+            const window = selectQuotaWindow(account.family, null, state.windows);
+            if (!window) return <Text style={{ color: q?.error ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: 11 }}>{state.label}</Text>;
             return (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                {state.kind === "cached" ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>缓存</Text> : null}
                 {window ? (
                   <QuotaMeter used={window.usedPercent} theme={theme} size={14} remaining ringRemaining circleAfter={false} prefix="" textSize={12} />
                 ) : null}
@@ -195,16 +184,10 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
 export function AccountQuotaDetails({ theme, account, quota, pending }: {
   theme: PluginSurfaceProps["theme"]; account: Account; quota?: AccountQuota; pending: boolean;
 }) {
-  if (quota?.error && /授权已失效|401|登录/.test(quota.error)) {
-    return (
-      <View style={{ marginTop: 2, paddingVertical: 2 }}>
-        <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "500" }}>
-          需登录 · 授权已失效
-        </Text>
-      </View>
-    );
-  }
-  const groups = account.family === "antigravity" ? quotaGroups(quota?.windows ?? []) : [];
+  const now = Date.now();
+  const state = quotaPresentation(quota, now, pending);
+  const windows = state.windows;
+  const groups = account.family === "antigravity" ? quotaGroups(windows) : [];
   const formatDays = (ts: number) => {
     const d = (ts - Date.now()) / 86400000;
     return d > 0 ? `${Math.ceil(d)}天后` : "已到期";
@@ -214,7 +197,10 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
 
   return (
     <View style={{ marginTop: 2, gap: 4 }}>
-      {account.subscriptionExpiresAt && groups.length ? (
+      {state.kind !== "fresh" ? (
+        <Text testID={"quota-state-" + account.id} style={{ color: quota?.error ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: 11 }}>{state.detail}</Text>
+      ) : null}
+      {account.subscriptionExpiresAt && (groups.length || !windows.length) ? (
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
           会员 {formatDays(account.subscriptionExpiresAt)}到期 · {compactDateTime(account.subscriptionExpiresAt)}
         </Text>
@@ -237,10 +223,10 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "700" }}>{group.title}</Text>
                 {group.pool === "claude" && account.active ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>当前会话</Text> : null}
-                {group.pool === "gemini" && quota?.stale === false ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>刷新于 {compactDateTime(Date.now()).split(" ")[1]}</Text> : null}
+                {group.pool === "gemini" && state.kind === "fresh" ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>获取于 {compactDateTime(quota?.fetchedAt).split(" ")[1]}</Text> : null}
               </View>
               {group.windows.map((window, index) => {
-                const effectiveReset = rollForwardResetAt(window.resetAt, window.label, Date.now());
+                const effectiveReset = window.resetAt;
                 return (
                   <View
                     key={window.id}
@@ -270,8 +256,8 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </View>
           ))}
         </View>
-      ) : quota?.windows.length ? (
-        quota.windows.map((window, index) => {
+      ) : windows.length ? (
+        windows.map((window, index) => {
           const showMembership = index === 0 && account.subscriptionExpiresAt;
           return (
             <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
@@ -279,7 +265,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
                   会员 {formatDays(account.subscriptionExpiresAt!)}到期
                 </Text>
-              ) : quota.windows.length > 1 ? (
+              ) : windows.length > 1 ? (
                 <Text numberOfLines={1} style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "500", flexShrink: 1 }}>
                   {window.label}
                 </Text>
@@ -287,7 +273,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 <View style={{ flex: 1 }} />
               )}
               {window.resetAt ? (() => {
-                const effectiveReset = rollForwardResetAt(window.resetAt, window.label, Date.now());
+                const effectiveReset = window.resetAt;
                 return (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
                     {compactDateTime(effectiveReset)} 重置 ({timeUntilReset(effectiveReset, Date.now())})
@@ -297,21 +283,6 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
             </View>
           );
         })
-      ) : account.subscriptionExpiresAt ? (
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
-          <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-            会员 {formatDays(account.subscriptionExpiresAt)}到期
-          </Text>
-          {quota?.windows[0]?.resetAt ? (
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
-              {compactDateTime(quota.windows[0].resetAt)} 重置 ({timeUntilReset(quota.windows[0].resetAt, Date.now())})
-            </Text>
-          ) : null}
-        </View>
-      ) : pending && !quota?.windows.length ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>同步最新额度中…</Text>
-      ) : !quota?.windows.length ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>暂无额度</Text>
       ) : null}
     </View>
   );

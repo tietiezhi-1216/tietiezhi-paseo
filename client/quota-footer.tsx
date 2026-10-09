@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useHosts, useRpc, type PluginSidebarItemProps } from "@getpaseo/plugin/client";
+import { useHosts, type PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { Modal } from "@getpaseo/plugin/client/react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { type Family } from "../shared/accounts.ts";
-import { type QuotaSnapshot, getQuota, selectQuotaWindow } from "../shared/quota.ts";
-import { compactResetCountdown, readableResetCountdown, naturalCountdown, quotaFooterLabel, rollForwardResetAt } from "../shared/quota-footer-label.ts";
+import { type QuotaSnapshot, selectQuotaWindow } from "../shared/quota.ts";
+import { naturalCountdown, quotaFooterLabel } from "../shared/quota-footer-label.ts";
+import { quotaPresentation } from "../shared/quota-state.ts";
 import { QuotaPanel, useQuota } from "./quota-panel.tsx";
 import { QuotaMeter, VendorMark } from "./ui.tsx";
-import { activeAccountStore, persistentQuotaStore, updatePersistentQuotas } from "./quota-cache.ts";
+import { getActiveAccountCache, getPersistentQuota, updatePersistentQuotas } from "./quota-cache.ts";
 
 function parseModelText(raw: string): { family: Family; pool?: "gemini" | "claude" } | null {
   const text = raw.toLowerCase().trim();
@@ -124,65 +125,38 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
 
   const online = useHosts().find((h) => h.serverId === host.id)?.status === "online";
   const quota = useQuota(host.id, footerFamily, null, true);
-  const rpc = useRpc(getQuota);
   const queries = useQueryClient();
-  const refresh = useMutation({
-    mutationFn: (selected: Family) => {
-      if (selected === "go") throw new Error("此渠道已停用");
-      return rpc({ family: selected, refresh: true });
-    },
-    onSuccess(result, selected) {
-      updatePersistentQuotas(result.quotas);
-      queries.setQueriesData<any>({ queryKey: ["tietiezhi", "quota", host.id, selected, null, true] }, (old: any) => {
-        if (!old) return result;
-        const newQuotas = Array.isArray(old.quotas) ? [...old.quotas] : [];
-        for (const q of result.quotas) {
-          const idx = newQuotas.findIndex(item => item.accountId === q.accountId);
-          if (idx >= 0) newQuotas[idx] = q; else newQuotas.push(q);
-        }
-        return { ...old, ...result, quotas: newQuotas };
-      });
-      queries.setQueryData(["tietiezhi", "quota", host.id, selected, null, false], result);
-    },
-  });
   const [, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((tick) => tick + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  if (quota.data?.quotas) {
-    updatePersistentQuotas(quota.data.quotas, footerFamily, quota.data.currentAccountId);
-  }
+  useEffect(() => {
+    if (quota.data?.quotas) updatePersistentQuotas(host.id, quota.data.quotas, footerFamily, quota.data.currentAccountId);
+  }, [quota.data, host.id, footerFamily]);
 
   const cachedData = queries.getQueryData<QuotaSnapshot>(["tietiezhi", "quota", host.id, footerFamily, null, true]);
   const data = (quota.data?.family === footerFamily ? quota.data : undefined)
     ?? (cachedData?.family === footerFamily ? cachedData : undefined);
-  const activeAccountId = data?.currentAccountId ?? activeAccountStore[footerFamily];
-  const q = (activeAccountId ? data?.quotas.find((a: any) => a.accountId === activeAccountId) : undefined)
-    ?? (activeAccountId ? persistentQuotaStore[activeAccountId] : undefined)
-    ?? data?.quotas.find((a: any) => a.accountId === data?.currentAccountId)
-    ?? data?.quotas[0]
-    ?? (activeAccountId ? persistentQuotaStore[activeAccountId] : undefined);
-
-  const stale = !online || quota.isError || q?.stale || (refresh.variables === footerFamily && refresh.isError);
-  const label = quotaFooterLabel(footerFamily, q?.windows ?? [], Date.now(), Boolean(stale), quota.isFetching, true);
-  const windows = q?.windows ?? [];
+  const activeAccountId = data ? data.currentAccountId : getActiveAccountCache(host.id, footerFamily);
+  const q = activeAccountId
+    ? data?.quotas.find((a) => a.accountId === activeAccountId) ?? getPersistentQuota(host.id, activeAccountId)
+    : undefined;
+  const state = quotaPresentation(q ? {
+    ...q, stale: q.stale || !online,
+    error: quota.isError ? "额度读取失败" : q.error,
+  } : undefined, Date.now(), quota.isFetching);
+  const stale = state.kind !== "fresh";
+  const label = state.windows.length
+    ? quotaFooterLabel(footerFamily, state.windows, Date.now(), stale, quota.isFetching, true)
+    : state.label;
   const activePool = detected?.pool ?? (footerFamily === "antigravity" ? "gemini" : null);
-  const activeWindow = selectQuotaWindow(footerFamily, activePool, windows);
-  const isAuthError = Boolean(q?.error && /授权已失效|401|登录|invalid_grant|unauthorized/i.test(q.error));
-  const effectiveWindow = activeWindow ? {
-    ...activeWindow,
-    resetAt: rollForwardResetAt(activeWindow.resetAt, activeWindow.label, Date.now()),
-  } : null;
-  const meters = [{ name: "", window: isAuthError ? null : effectiveWindow }];
-  const time = isAuthError
-    ? "需登录"
-    : effectiveWindow?.resetAt
-      ? naturalCountdown(effectiveWindow.resetAt, Date.now())
-      : quota.isFetching
-        ? "读取中…"
-        : "—";
+  const activeWindow = selectQuotaWindow(footerFamily, activePool, state.windows);
+  const meters = [{ name: "", window: activeWindow }];
+  const time = activeWindow
+    ? (stale ? "缓存 · " : "") + (activeWindow.resetAt ? naturalCountdown(activeWindow.resetAt, Date.now()) : "重置时间未知")
+    : state.label;
   return <>
     <View testID="quota-footer-card" onLayout={(event) => setRowWidth(Math.round(event.nativeEvent.layout.width))}
       style={{ width: "100%", minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 34, paddingHorizontal: dense ? 6 : 10, paddingVertical: 4, borderRadius: 6, gap: dense ? 4 : 8 }}>
@@ -196,9 +170,11 @@ function HostQuotaFooter(props: PluginSidebarItemProps) {
         <Text testID="quota-footer-countdown" accessibilityLabel={`下次额度刷新 ${time}${stale ? "，缓存" : ""}`} numberOfLines={1} pointerEvents="none"
           style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "500", lineHeight: 16, fontVariant: ["tabular-nums"], flexShrink: 1 }}>{time}</Text>
       </Pressable>
-      <Pressable testID="quota-footer-refresh" accessibilityRole="button" accessibilityLabel="刷新额度"
-        disabled={!online || quota.isFetching || refresh.isPending}
-        onPress={() => { setOpen(true); if (online) refresh.mutate(footerFamily); }}
+      <Pressable testID="quota-footer-refresh" accessibilityRole="button" accessibilityLabel="打开模型额度"
+        onPress={() => {
+          setOpen(true);
+          void queries.invalidateQueries({ queryKey: ["tietiezhi", "quota", host.id, footerFamily] });
+        }}
         style={{ minHeight: 30, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 4, opacity: online ? 1 : 0.55 }}>
         {(meters.length ? meters : [{ name: "", window: null }]).map((meter) => <View key={meter.name} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
           {meter.name ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>{meter.name}</Text> : null}

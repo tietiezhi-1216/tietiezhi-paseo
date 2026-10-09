@@ -6,6 +6,8 @@ import { dirname, isAbsolute, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { FAMILY_LABELS, LIVE_SLOTS, familyOfSlot, type Account, type AccountSnapshot, type Family } from "../shared/accounts.ts";
 
+import { legacyQuotaWindows } from "../shared/quota.ts";
+
 type RecordValue = Record<string, unknown>;
 type Candidate = {
   id: string;
@@ -183,7 +185,8 @@ export class AccountService {
             active: active.has(account.id), authType: string(account.credential.type) ?? "unknown",
             expiresAt: number(account.credential.expires), subscriptionExpiresAt: account.subscriptionExpiresAt,
             plan: account.plan, canSwitch: auth.content !== null && problem === null, problem,
-            cachedUsage: account.cachedUsage,
+            cachedUsage: account.cachedUsage ? { windows: legacyQuotaWindows(account.cachedUsage) } : undefined,
+            cachedAt: account.cachedAt ?? null,
           };
         }),
       },

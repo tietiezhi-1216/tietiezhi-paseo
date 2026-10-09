@@ -123,3 +123,56 @@ test("插件停止取消额度请求，命令形式 Key 不执行也不发送", 
     await started; lifetime.abort(); await assert.rejects(work, /已停止/);
   } finally { await f.cleanup(); }
 });
+
+test("失败不把历史额度写成最新缓存；缺失比例不回退上一周期", async () => {
+  const f = await fixture(); let writes = 0;
+  const update = f.service.updateAllAccountUsages.bind(f.service);
+  f.service.updateAllAccountUsages = async (values) => { writes++; return update(values); };
+  try {
+    await writeFile(f.paths.legacy[0], JSON.stringify({ fetchedAt: 100, accounts: [{ id: "openai-codex", cred: cred("A"), usage: { primary: { usedPercent: 52, resetAt: 1900000000000 } } }] }));
+    const failed = new QuotaService(() => f.service, async () => { throw new Error("network failure"); });
+    const result = await failed.get({ family: "codex" });
+    assert.equal(result.quotas[0].fetchedAt, 100); assert.equal(result.quotas[0].stale, true); assert.equal(writes, 0);
+    const missing = new QuotaService(() => f.service, async () => new Response('{"rate_limit":{}}'));
+    const noPercent = await missing.get({ family: "codex" });
+    assert.deepEqual(noPercent.quotas[0].windows, []);
+    assert.match(noPercent.quotas[0].error!, /未提供/); assert.equal(writes, 0);
+  } finally { await f.cleanup(); }
+});
+test("新周期成功取到0才显示100%，聚合信用池优先于产品分项", async () => {
+  const fresh = await fetchProviderQuota("xai", cred("X"), async () => new Response(JSON.stringify({
+    config: { creditUsagePercent: 0, currentPeriod: { end: "2030-01-01T00:00:00Z" } },
+  })), new AbortController().signal);
+  assert.equal(fresh.windows[0].usedPercent, 0);
+  const shared = await fetchProviderQuota("xai", cred("X"), async () => new Response(JSON.stringify({
+    config: { creditUsagePercent: 70, productUsage: [{ product: "GrokBuild", usagePercent: 5 }], currentPeriod: { end: "2030-01-01T00:00:00Z" } },
+  })), new AbortController().signal);
+  assert.equal(shared.windows[0].usedPercent, 70);
+  assert.equal(shared.windows[0].resetAt, Date.parse("2030-01-01T00:00:00Z"));
+});
+test("OAuth已轮换但额度查询失败时仍保存新refresh token，不丢失轮换", async () => {
+  const f = await fixture();
+  try {
+    f.auth["openai-codex"].expires = 1;
+    await writeFile(f.paths.auth, JSON.stringify(f.auth));
+    const quotas = new QuotaService(() => f.service, async (url) => String(url).includes("/oauth/token")
+      ? new Response(JSON.stringify({ access_token: "new-access", refresh_token: "new-refresh", expires_in: 3600 }))
+      : new Response("forbidden", { status: 403 }));
+    const result = await quotas.get({ family: "codex" });
+    assert.equal(result.quotas[0].stale, true); assert.match(result.quotas[0].error!, /403/);
+    const { readFile } = await import("node:fs/promises");
+    const auth = JSON.parse(await readFile(f.paths.auth, "utf8"));
+    assert.equal(auth["openai-codex"].access, "new-access");
+    assert.equal(auth["openai-codex"].refresh, "new-refresh");
+    assert.doesNotMatch(JSON.stringify(result), /new-access|new-refresh/);
+  } finally { await f.cleanup(); }
+});
+test("错误缓存真实冷却5秒，不假造attemptedAt或发起紧密重试", async () => {
+  const f = await fixture(); let now = 1000, calls = 0;
+  try {
+    const service = new QuotaService(() => f.service, async () => { calls++; return new Response("error", { status: 503 }); }, () => now);
+    await service.get({ family: "codex" }); assert.equal(calls, 1);
+    now += 4999; await service.get({ family: "codex", refresh: true }); assert.equal(calls, 1);
+    now++; await service.get({ family: "codex" }); assert.equal(calls, 2);
+  } finally { await f.cleanup(); }
+});

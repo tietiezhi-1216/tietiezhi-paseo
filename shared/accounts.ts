@@ -38,6 +38,7 @@ export const AccountSchema = z.object({
   canSwitch: z.boolean(),
   problem: z.string().nullable(),
   cachedUsage: z.unknown().optional(),
+  cachedAt: z.number().finite().nullable().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 export const AccountSnapshotSchema = z.object({
