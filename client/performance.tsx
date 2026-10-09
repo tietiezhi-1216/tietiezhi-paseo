@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
@@ -21,10 +21,100 @@ function cleanModelLabel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
-/** 1. 单轮会话结束时 AI 回复最下方的性能徽章 */
+function CopyIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: string }) {
+  if (typeof document === "undefined") return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function ForkIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: string }) {
+  if (typeof document === "undefined") return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M16 3h5v5" />
+      <path d="M8 3H3v5" />
+      <path d="M12 21v-8" />
+      <path d="M21 3l-7.5 7.5" />
+      <path d="M3 3l7.5 7.5" />
+    </svg>
+  );
+}
+
+/** 1. 彻底由我们接管并重做整行 UI：复制按钮、分叉按钮、耗时、TPS 与 Token 一体化同一行，无缝替换原生旧行 */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
+  const badgeRef = useRef<any>(null);
+  const nativeForkRef = useRef<HTMLElement | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const el = badgeRef.current as HTMLElement | null;
+    if (!el) return;
+
+    const findNativeFooter = () => {
+      let row = el.parentElement;
+      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
+        if (row.nextElementSibling) break;
+        row = row.parentElement;
+      }
+      if (!row) return false;
+
+      let next = row.nextElementSibling as HTMLElement | null;
+      for (let i = 0; i < 4 && next; i++) {
+        const isFooter = next.querySelector("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")
+          || next.innerText?.includes("工作了");
+        if (isFooter) {
+          const forkBtn = next.querySelector<HTMLElement>("button[aria-label*='fork' i], button[aria-label*='分叉' i], [data-testid*='fork']");
+          if (forkBtn) nativeForkRef.current = forkBtn;
+
+          // 将原生重复的旧 footer 在视觉与布局上完全隐形（占 0 空间）
+          next.style.setProperty("position", "absolute", "important");
+          next.style.setProperty("opacity", "0", "important");
+          next.style.setProperty("pointer-events", "none", "important");
+          next.style.setProperty("height", "0px", "important");
+          next.style.setProperty("min-height", "0px", "important");
+          next.style.setProperty("margin", "0px", "important");
+          next.style.setProperty("padding", "0px", "important");
+          next.style.setProperty("overflow", "hidden", "important");
+          return true;
+        }
+        next = next.nextElementSibling as HTMLElement | null;
+      }
+      return false;
+    };
+
+    findNativeFooter();
+    const timers = [60, 200, 500, 1200].map((ms) => setTimeout(findNativeFooter, ms));
+    return () => { for (const t of timers) clearTimeout(t); };
+  }, []);
+
   if (!data || data.outputTokens <= 0) return null;
+
+  const handleCopy = () => {
+    let textToCopy = data.content || "";
+    if (!textToCopy && typeof document !== "undefined" && badgeRef.current) {
+      let prev = badgeRef.current.parentElement?.previousElementSibling as HTMLElement | null;
+      if (prev) textToCopy = prev.innerText || "";
+    }
+    if (textToCopy) {
+      void copyText(textToCopy).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {});
+    }
+  };
+
+  const handleFork = () => {
+    if (nativeForkRef.current) {
+      nativeForkRef.current.style.pointerEvents = "auto";
+      nativeForkRef.current.click();
+    }
+  };
 
   const tpsColor = data.tps >= 50
     ? theme.colors.statusSuccess
@@ -39,32 +129,63 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
   return (
     <View
+      ref={badgeRef}
       style={{
+        width: "100%",
         flexDirection: "row",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 6,
-        paddingVertical: 2,
-        marginTop: 2,
-        marginBottom: 2,
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 4,
+        marginTop: 0,
       }}
     >
+      {/* 1. 复制按钮 */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="复制消息内容"
+        hitSlop={8}
+        onPress={handleCopy}
+        style={{ flexDirection: "row", alignItems: "center", gap: 3, cursor: "pointer" } as any}
+      >
+        <CopyIcon size={13} color={copied ? theme.colors.statusSuccess : theme.colors.foregroundMuted} />
+        {copied ? (
+          <Text style={{ color: theme.colors.statusSuccess, fontSize: 11, fontWeight: "600" }}>已复制</Text>
+        ) : null}
+      </Pressable>
+
+      {/* 2. 工作树分叉按钮 (完整触发 Paseo 原生分叉菜单) */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="分叉工作树"
+        hitSlop={8}
+        onPress={handleFork}
+        style={{ flexDirection: "row", alignItems: "center", cursor: "pointer" } as any}
+      >
+        <ForkIcon size={13} color={theme.colors.foregroundMuted} />
+      </Pressable>
+
+      {/* 3. 单轮真实耗时 */}
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
+        {durationStr}
+      </Text>
+
+      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+
+      {/* 4. ⚡ 整轮真实 TPS 速度 */}
       <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
       </Text>
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
+      {/* 5. 整轮完整 Token 统计 (过千强制 k) */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
         {formatTokens(data.outputTokens)} 出 / {formatTokens(data.inputTokens)} 入{cacheStr}
       </Text>
 
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
-
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
-        耗时 {durationStr}
-      </Text>
-
+      {/* 6. 多步骤执行提示 */}
       {data.steps && data.steps > 1 ? (
         <>
           <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
@@ -76,6 +197,7 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
+      {/* 7. 模型名称 */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "500" }}>
         {cleanModelLabel(data.model)}
       </Text>
