@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { localDaemonAuth, reloadConnectionError, reloadCurrentHostAgent } from "../server/agents.ts";
+import { localDaemonAuth, reloadConnectionError, reloadCurrentHostAgent, reloadViaLocalCli } from "../server/agents.ts";
 import type { PaseoApi } from "@getpaseo/client";
 
 test("current host reload uses bound SDK ownership and real runtime restart without App ids", async () => {
@@ -38,6 +38,23 @@ test("authentication errors identify the failing phase without exposing raw deta
     assert.doesNotMatch(error.message, /secret-value/);
     return true;
   });
+});
+
+test("native local reload pins daemon home and does not use remote host or inherited password", async () => {
+  await reloadViaLocalCli("agent-1", async (file, args, options) => {
+    assert.equal(file, "paseo");
+    assert.deepEqual(args.slice(0, 3), ["agent", "reload", "agent-1"]);
+    assert.equal(args.includes("--home"), true);
+    assert.equal(args.includes("--host"), false);
+    assert.equal(options.env.PASEO_PASSWORD, undefined);
+    assert.equal(options.timeout, 60_000);
+    return { stdout: JSON.stringify({ agentId: "agent-1", status: "reloaded" }) };
+  });
+});
+
+test("native reload rejects wrong-agent and unconfirmed success responses", async () => {
+  await assert.rejects(reloadViaLocalCli("agent-1", async () => ({ stdout: '{"agentId":"agent-2","status":"reloaded"}' })), /未确认/);
+  await assert.rejects(reloadViaLocalCli("--other-host", async () => { throw new Error("must not execute"); }), /无效/);
 });
 
 test("explicit reload password overrides stale local credential", () => {

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir, hostname } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { AgentHostSchema, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, resolveHostServerId, resolveReloadHost } from "../shared/agents.ts";
@@ -269,10 +271,35 @@ async function getLocalDaemonClient(password?: string): Promise<DaemonClient> {
   }
 }
 
+const execFileAsync = promisify(execFile);
+
+export async function reloadViaLocalCli(
+  agentId: string,
+  execute: (file: string, args: string[], options: { timeout: number; maxBuffer: number; env: NodeJS.ProcessEnv }) => Promise<{ stdout: string }> = execFileAsync,
+) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(agentId)) throw new Error("无效的 Agent ID");
+  // Use the native local-home resolver (live daemon endpoint / IPC / credentials),
+  // not the plugin's guessed config.json listen address. Never pass --host.
+  const env = { ...process.env };
+  delete env.PASEO_PASSWORD;
+  const { stdout } = await execute("paseo", ["agent", "reload", agentId, "--home", DAEMON_HOME, "--json"], {
+    timeout: 60_000, maxBuffer: 512_000, env,
+  });
+  const result = JSON.parse(stdout);
+  const data = result.data ?? result;
+  if (data.agentId !== agentId || data.status !== "reloaded") {
+    throw new Error("Paseo 未确认当前 Agent 已重载");
+  }
+  return data;
+}
+
 export async function reloadCurrentHostAgent(
   agentId: string,
   paseo: Pick<PaseoApi, "agents">,
-  connect: () => Promise<Pick<DaemonClient, "refreshAgent" | "close">> = getLocalDaemonClient,
+  connect: () => Promise<{ refreshAgent(id: string): Promise<unknown>; close(): Promise<void> }> = async () => ({
+    refreshAgent: (id) => reloadViaLocalCli(id),
+    close: async () => {},
+  }),
 ) {
   // The handler's SDK is bound to the daemon hosting this plugin, not an App
   // connection id. Verify ownership before invoking the real runtime restart.
