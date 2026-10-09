@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +19,53 @@ function cleanModelLabel(model: string): string {
 /** 1. 单轮会话结束时在复制操作栏旁边显示的性能徽章 */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
+  const badgeRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const el = badgeRef.current;
+    if (!el) return;
+
+    const attachToFooter = () => {
+      let row = el.parentElement;
+      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
+        if (row.nextElementSibling) break;
+        row = row.parentElement;
+      }
+      if (!row) return false;
+
+      let next = row.nextElementSibling as HTMLElement | null;
+      let targetFooter: HTMLElement | null = null;
+
+      for (let i = 0; i < 4 && next; i++) {
+        const slot = next.querySelector<HTMLElement>("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")?.closest?.("div")
+          || (next.querySelector("button") ? next : null);
+        if (slot) {
+          targetFooter = slot;
+          break;
+        }
+        next = next.nextElementSibling as HTMLElement | null;
+      }
+
+      if (targetFooter && targetFooter !== el.parentElement) {
+        targetFooter.style.display = "flex";
+        targetFooter.style.flexDirection = "row";
+        targetFooter.style.alignItems = "center";
+        targetFooter.style.flexWrap = "wrap";
+        targetFooter.appendChild(el);
+        return true;
+      }
+      return false;
+    };
+
+    if (!attachToFooter()) {
+      const t1 = setTimeout(attachToFooter, 80);
+      const t2 = setTimeout(attachToFooter, 250);
+      const t3 = setTimeout(attachToFooter, 600);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
+  }, []);
+
   if (!data || data.outputTokens <= 0) return null;
 
   const tpsColor = data.tps >= 50
@@ -34,6 +81,7 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
   return (
     <View
+      ref={badgeRef}
       style={{
         alignSelf: "flex-start",
         flexDirection: "row",
@@ -42,11 +90,12 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
         gap: 5,
         paddingHorizontal: 0,
         paddingVertical: 1,
-        marginTop: 1,
-        marginBottom: 2,
+        marginTop: 0,
+        marginBottom: 0,
         opacity: 0.88,
       }}
     >
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
       <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
       </Text>
