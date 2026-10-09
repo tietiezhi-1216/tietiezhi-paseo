@@ -750,10 +750,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const [currentArchiving, setCurrentArchiving] = useState(false);
   const [currentNote, setCurrentNote] = useState<string | null>(null);
   const [currentReloadError, setCurrentReloadError] = useState<string | null>(null);
-  const [currentNeedsPassword, setCurrentNeedsPassword] = useState(false);
-  const [currentNeedsTarget, setCurrentNeedsTarget] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [currentTarget, setCurrentTarget] = useState("");
+
 
   useEffect(() => {
     let alive = true;
@@ -794,32 +791,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
     if (!currentAgentId || currentReloading || currentArchiving) return;
     setCurrentReloading(true);
     setCurrentReloadError(null);
-    reloadRpc({
-      hostId: props.host.id,
-      serverId: props.host.id,
-      agentId: currentAgentId,
-      ...(currentNeedsPassword ? { password: currentPassword, savePassword: true } : {}),
-      ...(currentNeedsTarget ? { target: currentTarget.trim() } : {}),
-    })
+    reloadRpc({ currentHost: true, agentId: currentAgentId })
       .then(() => {
         setCurrentNote("已重载");
-        setCurrentNeedsPassword(false);
-        setCurrentNeedsTarget(false);
-        setCurrentPassword("");
-        setCurrentTarget("");
+
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : "重载失败";
-        if (/password|密码|incorrect|auth/i.test(message)) {
-          setCurrentNeedsPassword(true);
-          const needsTarget = /尚未配置连接密码与地址/i.test(message);
-          setCurrentNeedsTarget(needsTarget);
-          setCurrentReloadError(needsTarget
-            ? "尚未配置目标设备地址，请填写地址和连接密码"
-            : currentNeedsPassword ? "目标设备拒绝认证，请检查连接密码" : "重载需要目标设备的连接密码");
-        } else {
-          setCurrentReloadError(message);
-        }
+        setCurrentReloadError(message);
       })
       .finally(() => {
         setCurrentReloading(false);
@@ -1004,17 +983,9 @@ function AgentsPopover(props: PluginButtonContentProps) {
         </ScrollView>
       )}
 
-      {currentReloadError || currentNeedsPassword ? (
-        <View style={{ flexShrink: 0, padding: 10, gap: 8 }}>
-          {currentReloadError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11 }}>{currentReloadError}</Text> : null}
-          {currentNeedsPassword ? <>
-            {currentNeedsTarget ? <TextInput accessibilityLabel="当前 Agent 目标地址" placeholder="wss://目标设备/ws" value={currentTarget} onChangeText={setCurrentTarget} autoCapitalize="none" style={{ color: props.theme.colors.foreground, padding: 8, backgroundColor: props.theme.colors.surface1 }} /> : null}
-            <TextInput accessibilityLabel="当前 Agent 连接密码" placeholder="连接密码" secureTextEntry value={currentPassword} onChangeText={setCurrentPassword} autoCapitalize="none" onSubmitEditing={handleCurrentReload} style={{ color: props.theme.colors.foreground, padding: 8, backgroundColor: props.theme.colors.surface1 }} />
-            <View style={{ flexDirection: "row", gap: 16 }}>
-              <Pressable accessibilityRole="button" disabled={currentReloading || !currentPassword || (currentNeedsTarget && !currentTarget.trim())} onPress={handleCurrentReload}><Text style={{ color: props.theme.colors.accent }}>{currentReloading ? "重载中…" : "确认重载"}</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => { setCurrentNeedsPassword(false); setCurrentNeedsTarget(false); setCurrentPassword(""); setCurrentTarget(""); setCurrentReloadError(null); }}><Text style={{ color: props.theme.colors.foregroundMuted }}>取消</Text></Pressable>
-            </View>
-          </> : null}
+      {currentReloadError ? (
+        <View style={{ flexShrink: 0, padding: 10 }}>
+          <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11 }}>{currentReloadError}</Text>
         </View>
       ) : null}
       {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock) */}

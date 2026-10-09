@@ -41,7 +41,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(switchAccount, (input) => new AccountService().switch(input, lifetime.signal));
   server.handle(deleteAccount, (input) => new AccountService().delete(input, lifetime.signal));
   server.handle(agentActivity, (input) => handleAgentActivity(input));
-  server.handle(agentReload, (input) => reloadRemoteAgent(input));
+  server.handle(agentReload, (input, { paseo }) => reloadRemoteAgent(input, paseo));
   server.handle(agentArchive, (input, context) => archiveRemoteAgent(input, context.paseo));
   server.handle(agentUnarchive, (input, context) => unarchiveRemoteAgent(input, context.paseo));
   server.handle(getModelPerformance, (input) => performance.getOverview(input?.query));

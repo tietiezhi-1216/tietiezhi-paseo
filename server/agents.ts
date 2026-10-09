@@ -6,6 +6,7 @@ import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { AgentHostSchema, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, resolveHostServerId, resolveReloadHost } from "../shared/agents.ts";
 
 const AGENT_CACHE_MS = 15_000;
+const DAEMON_HOME = process.env.PASEO_HOME || join(homedir(), ".paseo");
 const AGENT_CONFIG_PATHS = [
   process.env.SLOTGAME_DEVICES_CONFIG,
   process.env.SLOTGAME_AGENTS_DEVICES_CONFIG,
@@ -165,7 +166,7 @@ async function readRemoteAgents() {
 
 function getLocalCredential(): string | undefined {
   try {
-    const credPath = join(homedir(), ".paseo", "local-credential");
+    const credPath = join(DAEMON_HOME, "local-credential");
     if (existsSync(credPath)) {
       const token = readFileSync(credPath, "utf8").trim();
       if (token) return token;
@@ -219,7 +220,7 @@ export function saveAgentHostConfig(hostUpdate: {
 
 function getLocalDaemonUrl(): string {
   try {
-    const configPath = join(homedir(), ".paseo", "config.json");
+    const configPath = join(DAEMON_HOME, "config.json");
     if (existsSync(configPath)) {
       const parsed = JSON.parse(readFileSync(configPath, "utf8"));
       const listen = parsed?.daemon?.listen;
@@ -268,14 +269,41 @@ async function getLocalDaemonClient(password?: string): Promise<DaemonClient> {
   }
 }
 
+export async function reloadCurrentHostAgent(
+  agentId: string,
+  paseo: Pick<PaseoApi, "agents">,
+  connect: () => Promise<Pick<DaemonClient, "refreshAgent" | "close">> = getLocalDaemonClient,
+) {
+  // The handler's SDK is bound to the daemon hosting this plugin, not an App
+  // connection id. Verify ownership before invoking the real runtime restart.
+  if (!await paseo.agents.ref(agentId).refresh()) {
+    throw new Error("当前设备不存在此 Agent，未执行重载");
+  }
+  const daemon = await connect();
+  try {
+    await daemon.refreshAgent(agentId);
+    agentCache = null;
+    return { agentId, hostId: "" };
+  } finally {
+    await daemon.close().catch(() => {});
+  }
+}
+
 export async function reloadRemoteAgent(input: {
+  currentHost?: boolean;
   hostId?: string;
   serverId?: string | null;
   agentId: string;
   password?: string;
   target?: string;
   savePassword?: boolean;
-}) {
+}, paseo?: PaseoApi) {
+  if (input.currentHost) {
+    if (!paseo || input.target || input.serverId || input.hostId || input.password !== undefined) {
+      throw new Error("当前设备重载不能混用远程连接参数");
+    }
+    return reloadCurrentHostAgent(input.agentId, paseo);
+  }
   const hosts = configuredAgentHosts();
   let host = resolveReloadHost(hosts, input);
 

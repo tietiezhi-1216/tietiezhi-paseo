@@ -1,6 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { localDaemonAuth, reloadConnectionError } from "../server/agents.ts";
+import { localDaemonAuth, reloadConnectionError, reloadCurrentHostAgent } from "../server/agents.ts";
+import type { PaseoApi } from "@getpaseo/client";
+
+test("current host reload uses bound SDK ownership and real runtime restart without App ids", async () => {
+  const calls: string[] = [];
+  const paseo = { agents: { ref: (id: string) => ({ refresh: async () => { calls.push(`verify:${id}`); return { id }; } }) } } as unknown as PaseoApi;
+  const result = await reloadCurrentHostAgent("agent-1", paseo, async () => ({
+    refreshAgent: async (id: string) => { calls.push(`restart:${id}`); return {} as any; },
+    close: async () => { calls.push("close"); },
+  }));
+  assert.equal(result.agentId, "agent-1");
+  assert.deepEqual(calls, ["verify:agent-1", "restart:agent-1", "close"]);
+});
+
+test("unknown current-host agent does not open any fallback connection", async () => {
+  const paseo = { agents: { ref: () => ({ refresh: async () => null }) } } as unknown as PaseoApi;
+  await assert.rejects(reloadCurrentHostAgent("missing", paseo, async () => { throw new Error("must not connect"); }), /当前设备不存在/);
+});
+
+test("current-host restart failure still closes the native connection", async () => {
+  let closed = false;
+  const paseo = { agents: { ref: () => ({ refresh: async () => ({ id: "agent-1" }) }) } } as unknown as PaseoApi;
+  await assert.rejects(reloadCurrentHostAgent("agent-1", paseo, async () => ({
+    refreshAgent: async () => { throw new Error("restart failed"); },
+    close: async () => { closed = true; },
+  })), /restart failed/);
+  assert.equal(closed, true);
+});
 
 test("explicit reload password overrides stale local credential", () => {
   const auth = localDaemonAuth("new-password", "stale-token");
