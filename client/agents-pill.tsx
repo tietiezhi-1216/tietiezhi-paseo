@@ -322,7 +322,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : String(error);
-        if (/PASSWORD_REQUIRED/i.test(msg) || /Password required/i.test(msg) || /密码/i.test(msg)) {
+        if (/password|密码|incorrect|auth/i.test(msg)) {
           const needsTarget = /尚未配置连接密码与地址/i.test(msg);
           setPasswordPrompt({
             agent,
@@ -356,7 +356,16 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       }
       setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已归档`);
     }).catch((error: unknown) => {
-      setReloadNote(error instanceof Error ? error.message : "归档失败");
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/password|密码|incorrect|auth/i.test(msg)) {
+        setPasswordPrompt({
+          agent,
+          error: "归档需要目标主机连接密码",
+        });
+        setReloadNote(null);
+      } else {
+        setReloadNote(error instanceof Error ? error.message : "归档失败");
+      }
     }).finally(() => {
       setArchivingId((current) => current === agent.id ? null : current);
     });
@@ -376,7 +385,16 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
         setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
       })
       .catch((error: unknown) => {
-        setReloadNote(error instanceof Error ? error.message : "恢复失败");
+        const msg = error instanceof Error ? error.message : String(error);
+        if (/password|密码|incorrect|auth/i.test(msg)) {
+          setPasswordPrompt({
+            agent,
+            error: "恢复需要目标主机连接密码",
+          });
+          setReloadNote(null);
+        } else {
+          setReloadNote(error instanceof Error ? error.message : "恢复失败");
+        }
       })
       .finally(() => {
         setUnarchivingId((current) => current === agent.id ? null : current);

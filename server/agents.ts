@@ -280,27 +280,28 @@ export async function reloadRemoteAgent(input: {
       return { agentId: input.agentId, hostId: host.id };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+      if (/password|incorrect/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
         throw new Error("PASSWORD_REQUIRED: 目标主机需要密码或连接密码错误");
       }
       throw err;
     }
   }
 
-  const daemon = await getLocalDaemonClient(input.password);
+  let daemon: DaemonClient | null = null;
   try {
+    daemon = await getLocalDaemonClient(input.password);
     if (input.serverId && input.serverId !== daemon.getLastServerInfoMessage()?.serverId) {
       throw new Error("PASSWORD_REQUIRED: 目标是远程设备，尚未配置连接密码与地址");
     }
     await daemon.refreshAgent(input.agentId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/password/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
+    if (/password|incorrect/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
       throw new Error("PASSWORD_REQUIRED: 本机 Daemon 需要连接凭据或密码");
     }
     throw err;
   } finally {
-    await daemon.close().catch(() => {});
+    if (daemon) await daemon.close().catch(() => {});
   }
   agentCache = null;
   return { agentId: input.agentId, hostId: "" };
