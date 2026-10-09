@@ -812,8 +812,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
         const message = err instanceof Error ? err.message : "重载失败";
         if (/password|密码|incorrect|auth/i.test(message)) {
           setCurrentNeedsPassword(true);
-          setCurrentNeedsTarget(/尚未配置连接密码与地址/i.test(message));
-          setCurrentReloadError(currentNeedsPassword ? "密码错误或连接失败，请重试" : "重载需要目标设备的连接密码");
+          const needsTarget = /尚未配置连接密码与地址/i.test(message);
+          setCurrentNeedsTarget(needsTarget);
+          setCurrentReloadError(needsTarget
+            ? "尚未配置目标设备地址，请填写地址和连接密码"
+            : currentNeedsPassword ? "目标设备拒绝认证，请检查连接密码" : "重载需要目标设备的连接密码");
         } else {
           setCurrentReloadError(message);
         }

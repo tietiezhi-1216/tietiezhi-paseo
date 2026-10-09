@@ -231,19 +231,41 @@ function getLocalDaemonUrl(): string {
   return "ws://127.0.0.1:6767/ws";
 }
 
+export function localDaemonAuth(password?: string, credential?: string) {
+  // DaemonClient prioritizes localCredential over password. An explicit retry
+  // must use the supplied password, not the same potentially stale token.
+  return {
+    password: password || undefined,
+    localCredential: !password && credential ? () => credential : undefined,
+  };
+}
+
+export function reloadConnectionError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("PASSWORD_REQUIRED:")) return error instanceof Error ? error : new Error(message);
+  if (/password|incorrect/i.test(message) || (error as any)?.name === "DaemonAuthenticationError") {
+    return new Error("PASSWORD_REQUIRED: 本机 Daemon 需要连接凭据或密码");
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 async function getLocalDaemonClient(password?: string): Promise<DaemonClient> {
   const localCred = getLocalCredential();
   const daemon = new DaemonClient({
     url: getLocalDaemonUrl(),
-    password: password || undefined,
-    localCredential: localCred ? () => localCred : undefined,
+    ...localDaemonAuth(password, localCred),
     clientId: `${AGENT_CLIENT_PREFIX}-local`,
     clientType: "cli",
     connectTimeoutMs: REMOTE_CLIENT_CONNECT_TIMEOUT_MS,
     reconnect: { enabled: false },
   });
-  await daemon.connect();
-  return daemon;
+  try {
+    await daemon.connect();
+    return daemon;
+  } catch (error) {
+    await daemon.close().catch(() => {});
+    throw error;
+  }
 }
 
 export async function reloadRemoteAgent(input: {
@@ -295,11 +317,7 @@ export async function reloadRemoteAgent(input: {
     }
     await daemon.refreshAgent(input.agentId);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/password|incorrect/i.test(msg) || (err as any)?.name === "DaemonAuthenticationError") {
-      throw new Error("PASSWORD_REQUIRED: 本机 Daemon 需要连接凭据或密码");
-    }
-    throw err;
+    throw reloadConnectionError(err);
   } finally {
     if (daemon) await daemon.close().catch(() => {});
   }
