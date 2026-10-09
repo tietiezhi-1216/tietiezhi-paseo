@@ -99,6 +99,10 @@ for (const mode of ["first", "later-only", "duplicate", "mismatch", "invalid", "
       a(later, "2023-11-14T22:13:27.000Z"), metadata({ ...timing, ...later, ttftMs: 50 })];
     writeFileSync(nativeHandle, rows.map(r => JSON.stringify(r)).join("\n"));
     const service = new PerformanceService(store);
+    let now = 1_700_000_000_000;
+    t.mock.method(Date, "now", () => now);
+    service.onTurnStarted({ agent: { id: "agent" } } as any);
+    now += 7000;
     const result = await service.onTurnEnded({ agent: { id: "agent", provider: "pi" }, timeline: [] } as any, { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: { persistence: { nativeHandle } } }) }) } } } as any);
     assert.ok(result); assert.equal(result.outputTokens, 200);
     assert.equal(result.ttftMs, mode === "first" ? 1200 : undefined);

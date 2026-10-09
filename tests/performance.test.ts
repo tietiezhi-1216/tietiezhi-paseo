@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PerformanceService } from "../server/performance.ts";
@@ -27,12 +27,22 @@ test("TurnPerformanceSchema validates valid performance data", () => {
   assert.equal(parsed.outputTokens, 640);
 });
 
-test("PerformanceService calculates delta usage and records turn performance", async (t) => {
+test("PerformanceService records attributed native turn performance", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "tietiezhi-performance-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const service = new PerformanceService(join(dir, "records.json"));
   const agentId = `test-agent-${Date.now()}`;
 
+  const nativeHandle = join(dir, "session.jsonl");
+  const start = 1_700_000_000_000;
+  let now = start;
+  t.mock.method(Date, "now", () => now);
+  writeFileSync(nativeHandle, [
+    { type: "message", timestamp: new Date(start).toISOString(), message: { role: "user" } },
+    { type: "message", timestamp: new Date(start + 2000).toISOString(), message: {
+      role: "assistant", durationMs: 1000, usage: { input: 1000, output: 500, cacheRead: 2000 }, text: "Final reply",
+    } },
+  ].map(row => JSON.stringify(row)).join("\n"));
   // 模拟 turn_started
   service.onTurnStarted({
     agent: {
@@ -46,6 +56,7 @@ test("PerformanceService calculates delta usage and records turn performance", a
     turnId: "turn-1",
   });
 
+  now += 2000;
   // 模拟 context.paseo
   const mockContext = {
     paseo: {
@@ -54,6 +65,7 @@ test("PerformanceService calculates delta usage and records turn performance", a
           refresh: async () => ({
             agent: {
               id: agentId,
+              persistence: { nativeHandle },
               runtimeInfo: { model: "gpt-6-astra", provider: "openai-codex" },
               lastUsage: { inputTokens: 1000, outputTokens: 500, cachedInputTokens: 2000 },
             },

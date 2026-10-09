@@ -21,6 +21,10 @@ for (const timings of [[1000, 3000], [1000, undefined], [1000, 0], [1000, -1], [
       assistant(10, 900, timings[1]),
     ].map(row => JSON.stringify(row)).join("\n"));
     const service = new PerformanceService(join(dir, "records.json"));
+    let now = 1_700_000_000_000;
+    t.mock.method(Date, "now", () => now);
+    service.onTurnStarted({ agent: { id: "test" } } as any);
+    now += 10_000;
     const result = await service.onTurnEnded({ agent: { id: "test", provider: "pi" }, timeline: [{ type: "assistant_message", messageId: "final", text: "Reply" }] } as any, {
       paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: { persistence: { nativeHandle: file } } }) }) } },
     } as any);

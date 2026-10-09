@@ -15,55 +15,85 @@ const MAX_STORED_RECORDS = 2_000;
 const STORE_PATH = join(homedir(), ".paseo", "tietiezhi", "model-performance.json");
 
 function extractTurnUsageFromNativeHandle(
-  nativeHandle?: string | null,
-  turnStartTime?: number,
+  nativeHandle: string | null | undefined,
+  turnStartTime: number,
+  turnEndTime: number,
 ): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string; durationMs: number; modelDurationMs?: number; ttftMs?: number } | null {
   if (!nativeHandle || !existsSync(nativeHandle)) return null;
   try {
     const rawContent = readFileSync(nativeHandle, "utf8");
-    const lines = rawContent.trim().split("\n");
-    if (!lines.length) return null;
+    let entries = rawContent.trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+    if (!entries.length || entries.some(entry => !entry || typeof entry !== "object")) return null;
 
-    // Find the last user message index that initiated this turn
-    let lastUserIndex = -1;
-    let userTimestamp = 0;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type === "message" && entry.message?.role === "user") {
-          lastUserIndex = i;
-          userTimestamp = entry.timestamp ? Date.parse(entry.timestamp) : 0;
-          break;
-        }
-      } catch {}
+    // Pi sessions are trees. Only follow the newest entry's ancestry, never
+    // sum abandoned sibling branches. Flat transcripts remain supported.
+    if (entries.some(entry => Object.hasOwn(entry, "parentId"))) {
+      const byId = new Map<string, typeof entries[number]>();
+      for (const entry of entries) {
+        if (typeof entry.id !== "string") continue;
+        const previous = byId.get(entry.id);
+        if (previous && JSON.stringify(previous) !== JSON.stringify(entry)) return null;
+        byId.set(entry.id, entry);
+      }
+      const branch = [];
+      const visited = new Set<string>();
+      let entry = entries.at(-1);
+      while (entry) {
+        if (typeof entry.id !== "string" || visited.has(entry.id)) return null;
+        visited.add(entry.id);
+        branch.push(entry);
+        if (entry.parentId === null) break;
+        if (typeof entry.parentId !== "string" || !byId.has(entry.parentId)) return null;
+        entry = byId.get(entry.parentId);
+      }
+      entries = branch.reverse();
     }
-
-    // Collect all assistant steps from this user message to the end of session
-    const sliceFrom = lastUserIndex >= 0 ? lastUserIndex : Math.max(0, lines.length - 60);
+    // Bound by the observed Paseo turn, not the latest user message: a
+    // continuation may have no new user entry; steering may add several.
+    const seenResponses = new Map<string, string>();
+    const seenEntries = new Map<string, string>();
     let input = 0;
     let output = 0;
     let cached = 0;
     let reasoning = 0;
     let steps = 0;
     let lastAssistantText = "";
-    let lastAssistantTime = 0;
     let modelDurationMs = 0;
     let completeResponseTiming = true;
     let firstAssistant: ResponseIdentity | undefined;
     let firstAssistantFailed = false;
     const responseTimings: ResponseTiming[] = [];
 
-    for (let i = sliceFrom; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    for (const entry of entries) {
       try {
-        const entry = JSON.parse(line);
         if (entry.type === "custom" && entry.customType === RESPONSE_TIMING_ENTRY && isResponseTiming(entry.data)) {
           responseTimings.push(entry.data);
         }
         if (entry.type === "message" && entry.message?.role === "assistant") {
+          const at = Date.parse(entry.timestamp);
+          if (!Number.isFinite(at)) return null;
+          if (at < turnStartTime) continue;
+          // Later responses mean the file advanced beyond this ended turn.
+          if (at > turnEndTime) return null;
+          const m = entry.message;
+          // Message timestamps mark request start in Pi; persisted entry time
+          // alone can include a response that began before this live turn.
+          if (typeof m.timestamp === "number" && m.timestamp < turnStartTime) continue;
+          const responseKey = typeof m.responseId === "string" && m.responseId
+            ? JSON.stringify([m.provider, m.api, m.model, m.responseId]) : undefined;
+          const signature = JSON.stringify(m);
+          const entryDuplicate = typeof entry.id === "string" ? seenEntries.get(entry.id) : undefined;
+          const responseDuplicate = responseKey ? seenResponses.get(responseKey) : undefined;
+          if ((entryDuplicate !== undefined && entryDuplicate !== signature)
+            || (responseDuplicate !== undefined && responseDuplicate !== signature)) return null;
+          if (entryDuplicate !== undefined || responseDuplicate !== undefined) continue;
+          if (typeof entry.id === "string") seenEntries.set(entry.id, signature);
+          if (responseKey) seenResponses.set(responseKey, signature);
+          const usage = m.usage;
+          const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+          if (!usage || !count(usage.output) || !count(usage.input ?? 0) || !count(usage.cacheRead ?? 0)
+            || !count(usage.reasoning ?? usage.reasoningTokens ?? 0)) return null;
+          if (m.stopReason === "error" || m.stopReason === "aborted") completeResponseTiming = false;
           steps++;
           if (steps === 1) {
             const m = entry.message;
@@ -83,33 +113,26 @@ function extractTurnUsageFromNativeHandle(
             input += (u.input || 0);
             output += (u.output || 0);
             cached += (u.cacheRead || 0);
-            reasoning += (u.reasoning || 0);
+            reasoning += (u.reasoning ?? u.reasoningTokens ?? 0);
           }
-          const t = entry.timestamp ? Date.parse(entry.timestamp) : 0;
-          if (t > lastAssistantTime) lastAssistantTime = t;
-
           // Extract text for clipboard copying
           const contentItems = entry.message.content;
           if (Array.isArray(contentItems)) {
-            for (const item of contentItems) {
-              if (item?.type === "text" && typeof item.text === "string") {
-                lastAssistantText = item.text;
-              }
-            }
+            lastAssistantText = contentItems.filter(item => item?.type === "text" && typeof item.text === "string")
+              .map(item => item.text).join("\n");
           } else if (typeof entry.message.text === "string") {
             lastAssistantText = entry.message.text;
           }
         }
-      } catch {}
+      } catch { return null; }
     }
 
     if (output > 0) {
-      const finishTime = lastAssistantTime || Date.now();
-      const startTime = userTimestamp || (turnStartTime && turnStartTime > 0 ? turnStartTime : finishTime - 5_000);
-      const durationMs = Math.max(500, finishTime - startTime);
+      const durationMs = turnEndTime - turnStartTime;
+      if (!Number.isFinite(durationMs) || durationMs <= 0 || turnStartTime <= 0) return null;
       return { input, output, cached, reasoning, steps, content: lastAssistantText, durationMs,
-        modelDurationMs: completeResponseTiming && modelDurationMs > 0 ? modelDurationMs : undefined,
-        ttftMs: lastUserIndex >= 0 && firstAssistant && !firstAssistantFailed
+        modelDurationMs: completeResponseTiming && Number.isFinite(modelDurationMs) && modelDurationMs > 0 ? modelDurationMs : undefined,
+        ttftMs: firstAssistant && !firstAssistantFailed
           ? matchResponseTiming(responseTimings, firstAssistant)?.ttftMs : undefined };
     }
   } catch {}
@@ -118,7 +141,7 @@ function extractTurnUsageFromNativeHandle(
 
 export class PerformanceService {
   private turnStartTimes = new Map<string, number>();
-  private lastKnownUsage = new Map<string, { input: number; output: number; cached: number }>();
+  private turnIds = new Map<string, string | null>();
   private records: RawTurnRecord[] = [];
   private loaded = false;
 
@@ -162,15 +185,25 @@ export class PerformanceService {
 
   onTurnStarted(event: PluginLifecycleEvents["agent.turn_started"]) {
     this.turnStartTimes.set(event.agent.id, Date.now());
+    this.turnIds.set(event.agent.id, event.turnId);
   }
 
   async onTurnEnded(
     event: PluginLifecycleEvents["agent.turn_ended"],
     context: PluginHookContext,
   ): Promise<TurnPerformanceData | null> {
-    const startTime = this.turnStartTimes.get(event.agent.id) ?? (Date.now() - 5_000);
+    if (this.turnIds.has(event.agent.id) && this.turnIds.get(event.agent.id) !== event.turnId) return null;
+    const endTime = Date.now();
+    const startTime = this.turnStartTimes.get(event.agent.id);
+    // Reloads and missed starts have no trustworthy live-turn boundary.
+    if (startTime === undefined) return null;
     this.turnStartTimes.delete(event.agent.id);
-    let durationMs = Math.max(500, Date.now() - startTime);
+    this.turnIds.delete(event.agent.id);
+    let durationMs = 0;
+    const finalReply = [...event.timeline].reverse().find((item) => item.type === "assistant_message" && item.text.trim());
+    const alreadyRecorded = () => finalReply?.type === "assistant_message" && finalReply.messageId
+      && this.records.some(record => record.agentId === event.agent.id && record.messageId === finalReply.messageId);
+    if (alreadyRecorded()) return null;
 
     let modelName = "unknown";
     let providerName = event.agent.provider || "ai";
@@ -194,10 +227,11 @@ export class PerformanceService {
         providerName = snapshot.agent.runtimeInfo.provider;
       }
 
-      // Method 1: Try reading exact cumulative per-turn assistant messages from native session log
+      // Read attributed assistant usage from the native session's active branch.
       const nativeUsage = extractTurnUsageFromNativeHandle(
         snapshot?.agent?.persistence?.nativeHandle,
         startTime,
+        endTime,
       );
 
       if (nativeUsage && nativeUsage.output > 0) {
@@ -211,45 +245,24 @@ export class PerformanceService {
         modelDurationMs = nativeUsage.modelDurationMs;
         ttftMs = nativeUsage.ttftMs;
       } else {
-        // Method 2: Fallback to cumulative delta with baseline guard
-        const current = snapshot?.agent?.lastUsage;
-        if (current) {
-          const prev = this.lastKnownUsage.get(event.agent.id);
-          if (prev) {
-            deltaInput = Math.max(0, (current.inputTokens ?? 0) - prev.input);
-            deltaOutput = Math.max(0, (current.outputTokens ?? 0) - prev.output);
-            deltaCached = Math.max(0, (current.cachedInputTokens ?? 0) - prev.cached);
-          } else {
-            // If first observation output is modest (e.g. <= 4096), treat as first turn output;
-            // if massive, treat as legacy cumulative baseline to prevent wild 100k+ spikes.
-            const totalOut = current.outputTokens ?? 0;
-            if (totalOut > 0 && totalOut <= 4096) {
-              deltaInput = current.inputTokens ?? 0;
-              deltaOutput = totalOut;
-              deltaCached = current.cachedInputTokens ?? 0;
-            } else {
-              deltaInput = 0;
-              deltaOutput = 0;
-              deltaCached = 0;
-            }
-          }
-
-          this.lastKnownUsage.set(event.agent.id, {
-            input: current.inputTokens ?? 0,
-            output: current.outputTokens ?? 0,
-            cached: current.cachedInputTokens ?? 0,
-          });
-        }
+        // lastUsage is not a portable cumulative counter. Without attributed
+        // native messages, subtraction or a token-size threshold invents usage.
+        return null;
       }
     } catch {}
 
-    // Only record and display if output tokens were generated
-    if (deltaOutput <= 0) return null;
+    // Reject uncertain attribution rather than attaching the latest native
+    // response to a different Paseo reply after a continuation/session switch.
+    if (deltaOutput <= 0 || !Number.isSafeInteger(deltaOutput)
+      || !Number.isSafeInteger(deltaInput) || !Number.isSafeInteger(deltaCached)
+      || !Number.isFinite(durationMs) || durationMs <= 0
+      || (finalReply?.type === "assistant_message" && finalReply.text.trim() !== assistantContent.trim())) return null;
 
     const durationSec = durationMs / 1000;
     const tps = Number((deltaOutput / durationSec).toFixed(1));
 
-    const finalReply = [...event.timeline].reverse().find((item) => item.type === "assistant_message" && item.text.trim());
+    // Recheck after refresh: concurrent/replayed end hooks must not duplicate rows.
+    if (alreadyRecorded()) return null;
     const perfData: TurnPerformanceData = {
       model: modelName,
       provider: providerName,
