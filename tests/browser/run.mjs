@@ -265,14 +265,15 @@ try {
   await page.evaluate(() => globalThis.__preview.showReply({ text: "正文第一段\n\n**正文第二段**", messageId: "preview-reply", phase: "complete" }));
   await reply.getByText("正文第二段", { exact: true }).waitFor();
   for (const label of ["input 2.0k", "· output 1.5k", "· hit 60.0%"]) await reply.getByText(label, { exact: true }).waitFor();
-  assert.equal((await reply.getByTestId("tietiezhi-reply-footer").innerText()).replace(/◉/g, "").replace(/\s+/g, " ").trim(), "250 tps · input 2.0k · output 1.5k · hit 60.0%");
+  assert.equal((await reply.getByTestId("tietiezhi-reply-footer").innerText()).replace(/◉/g, "").replace(/\s+/g, " ").trim(), "250 tps · 12s · input 2.0k · output 1.5k · hit 60.0%");
   assert.match(await reply.getByTestId("reply-tps").getAttribute("aria-label"), /excluding tool execution/);
   assert.equal(await reply.getByTestId("reply-input").evaluate(el => getComputedStyle(el).fontWeight), "400");
   const metricRows = await reply.getByTestId("tietiezhi-reply-footer").evaluate(el => {
     const nodes = [...el.querySelectorAll('[dir="auto"]')];
     return nodes.map(n => ({ y: n.getBoundingClientRect().y, height: n.getBoundingClientRect().height, size: getComputedStyle(n).fontSize }));
   });
-  assert.equal(metricRows.length, 4);
+  assert.equal(metricRows.length, 5);
+  assert.match(await reply.getByTestId("reply-duration").getAttribute("aria-label"), /包含工具执行/);
   assert.ok(metricRows.every(n => Math.abs(n.y - metricRows[0].y) < 2 && n.height <= 17 && n.size === "11px"), "metrics remain single-line, uniformly sized on mobile");
   assert.doesNotMatch(await reply.getByTestId("tietiezhi-reply-footer").innerText(), /\btime\b|TPS|出|入|缓/);
   await reply.screenshot({ path: join(root, ".artifacts/ui/reply-tps-mobile-light.png") });
@@ -299,6 +300,7 @@ try {
   await page.screenshot({ path: join(root, ".artifacts/ui/unified-assistant-reply.png") });
   await page.evaluate(() => globalThis.__preview.showReply({ text: "旧记录", messageId: "legacy-reply", phase: "complete" }));
   await reply.getByText("· hit 0.0%", { exact: true }).waitFor();
+  await reply.getByTestId("reply-duration").getByText("12s ·", { exact: true }).waitFor();
   assert.doesNotMatch(await reply.getByTestId("tietiezhi-reply-footer").innerText(), /cache|ttft|tps|model|—/);
   assert.equal(await reply.getByTestId("reply-tps").count(), 0, "no whole-turn TPS fallback without native response timing");
   await page.evaluate(() => globalThis.__preview.showReply({ text: "中间过程说明", phase: "complete" }));
