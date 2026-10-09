@@ -16,7 +16,7 @@ function cleanModelLabel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
-/** 1. 单轮会话结束时 AI 回复最下方的性能徽章 */
+/** 1. 单轮会话结束时在复制操作栏旁边显示的性能徽章 */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
   if (!data || data.outputTokens <= 0) return null;
@@ -29,7 +29,7 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
   const durationSec = (data.durationMs / 1000).toFixed(1);
   const cacheRatio = data.cachedTokens > 0
-    ? `(缓存 ${formatTokens(data.cachedTokens)})`
+    ? ` (+${formatTokens(data.cachedTokens)}缓)`
     : "";
 
   return (
@@ -39,36 +39,26 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
         flexDirection: "row",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-        backgroundColor: hexAlpha(theme.colors.surface1, 0.7),
-        borderWidth: 1,
-        borderColor: hexAlpha(theme.colors.border, 0.6),
-        marginTop: 4,
-        marginBottom: 6,
+        gap: 5,
+        paddingHorizontal: 0,
+        paddingVertical: 1,
+        marginTop: 1,
+        marginBottom: 2,
+        opacity: 0.88,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-        <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
-          ⚡ {data.tps}
-        </Text>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10 }}>tokens/s</Text>
-      </View>
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+      <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
+        ⚡ {data.tps} tps
+      </Text>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
-        入 {formatTokens(data.inputTokens)} {cacheRatio}
+        {formatTokens(data.inputTokens)}{cacheRatio} 入 / <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{formatTokens(data.outputTokens)} 出</Text>
       </Text>
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
-      <Text style={{ color: theme.colors.foreground, fontSize: 10, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
-        出 {formatTokens(data.outputTokens)}
-      </Text>
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
         {durationSec}s
       </Text>
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, opacity: 0.5 }}>·</Text>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "500" }}>
         {cleanModelLabel(data.model)}
       </Text>

@@ -20,6 +20,54 @@ interface RawTurnRecord {
 const MAX_STORED_RECORDS = 2_000;
 const STORE_PATH = join(homedir(), ".paseo", "tietiezhi", "model-performance.json");
 
+function extractTurnUsageFromNativeHandle(
+  nativeHandle?: string | null,
+  turnStartTime?: number,
+): { input: number; output: number; cached: number } | null {
+  if (!nativeHandle || !existsSync(nativeHandle)) return null;
+  try {
+    const content = readFileSync(nativeHandle, "utf8");
+    const lines = content.trim().split("\n");
+    let input = 0;
+    let output = 0;
+    let cached = 0;
+    let found = false;
+
+    // Scan backwards for assistant messages in this turn
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === "message" && entry.message?.role === "assistant") {
+          const msgTime = entry.timestamp ? Date.parse(entry.timestamp) : (entry.message?.timestamp ?? 0);
+          if (turnStartTime && turnStartTime > 0 && msgTime > 0 && msgTime < turnStartTime - 4_000) {
+            break;
+          }
+          const u = entry.message.usage;
+          if (u && typeof u.output === "number" && u.output > 0) {
+            input += (u.input || 0);
+            output += (u.output || 0);
+            cached += (u.cacheRead || 0);
+            found = true;
+          }
+        }
+        if (entry.type === "message" && entry.message?.role === "user") {
+          const userTime = entry.timestamp ? Date.parse(entry.timestamp) : 0;
+          if (turnStartTime && turnStartTime > 0 && userTime >= turnStartTime - 5_000) {
+            break;
+          }
+        }
+      } catch {}
+    }
+
+    if (found && output > 0) {
+      return { input, output, cached };
+    }
+  } catch {}
+  return null;
+}
+
 export class PerformanceService {
   private turnStartTimes = new Map<string, number>();
   private lastKnownUsage = new Map<string, { input: number; output: number; cached: number }>();
@@ -81,18 +129,46 @@ export class PerformanceService {
         providerName = snapshot.agent.runtimeInfo.provider;
       }
 
-      const current = snapshot?.agent?.lastUsage;
-      if (current) {
-        const prev = this.lastKnownUsage.get(event.agent.id) ?? { input: 0, output: 0, cached: 0 };
-        deltaInput = Math.max(0, (current.inputTokens ?? 0) - prev.input);
-        deltaOutput = Math.max(0, (current.outputTokens ?? 0) - prev.output);
-        deltaCached = Math.max(0, (current.cachedInputTokens ?? 0) - prev.cached);
+      // Method 1: Try reading exact per-turn assistant message usage from native session log
+      const nativeUsage = extractTurnUsageFromNativeHandle(
+        snapshot?.agent?.persistence?.nativeHandle,
+        startTime,
+      );
 
-        this.lastKnownUsage.set(event.agent.id, {
-          input: current.inputTokens ?? 0,
-          output: current.outputTokens ?? 0,
-          cached: current.cachedInputTokens ?? 0,
-        });
+      if (nativeUsage && nativeUsage.output > 0) {
+        deltaInput = nativeUsage.input;
+        deltaOutput = nativeUsage.output;
+        deltaCached = nativeUsage.cached;
+      } else {
+        // Method 2: Fallback to cumulative delta with baseline guard
+        const current = snapshot?.agent?.lastUsage;
+        if (current) {
+          const prev = this.lastKnownUsage.get(event.agent.id);
+          if (prev) {
+            deltaInput = Math.max(0, (current.inputTokens ?? 0) - prev.input);
+            deltaOutput = Math.max(0, (current.outputTokens ?? 0) - prev.output);
+            deltaCached = Math.max(0, (current.cachedInputTokens ?? 0) - prev.cached);
+          } else {
+            // If first observation output is modest (e.g. <= 4096), treat as first turn output;
+            // if massive, treat as legacy cumulative baseline to prevent wild 100k+ spikes.
+            const totalOut = current.outputTokens ?? 0;
+            if (totalOut > 0 && totalOut <= 4096) {
+              deltaInput = current.inputTokens ?? 0;
+              deltaOutput = totalOut;
+              deltaCached = current.cachedInputTokens ?? 0;
+            } else {
+              deltaInput = 0;
+              deltaOutput = 0;
+              deltaCached = 0;
+            }
+          }
+
+          this.lastKnownUsage.set(event.agent.id, {
+            input: current.inputTokens ?? 0,
+            output: current.outputTokens ?? 0,
+            cached: current.cachedInputTokens ?? 0,
+          });
+        }
       }
     } catch {}
 
