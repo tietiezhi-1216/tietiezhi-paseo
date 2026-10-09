@@ -10,11 +10,11 @@ function App() {
   const props = { theme, host: { id: "host", label: "Host" }, agentId: "agent", layout: { platform: "web", compact: false }, close: () => setOpen(false) };
   useEffect(() => {
     const timeline = { refetch: async () => ({ entries: [] }), subscribe(fn) { subscriptions++; message = fn; const release = () => { subscriptions--; }; release.ready = Promise.resolve(); return release; } };
-    const stop = contributeSubagentComposer({ paseo: { agents: { ref: () => ({ timeline }), subscribe: () => () => {}, list: async () => ({ entries: [{ agent: { id: "agent", provider: "pi", workspaceId: "ws" } }], pageInfo: { hasMore: false }, subscription: { release: async () => {} } }) } }, addComposerPill(value) { setRegistration(value); setLabel(value.button.label); return { update: value => setLabel(value.label), remove: () => { removed++; setRegistration(null); } }; } });
-    globalThis.__composer = { emit: status => message({ agentId: "agent", event: { type: "timeline", item: tool(status) } }), stats: () => ({ subscriptions, removed }), stop };
+    const stop = contributeSubagentComposer({ paseo: { agents: { ref: () => ({ timeline }), subscribe: () => () => {}, list: async () => ({ entries: [{ agent: { id: "agent", provider: "pi", workspaceId: "ws" } }], pageInfo: { hasMore: false }, subscription: { release: async () => {} } }) } }, addComposerPill(value) { setRegistration(value); setLabel(value.button.label); return { update: value => { if (value.label !== undefined) setLabel(value.label); setRegistration(previous => ({ ...previous, button: { ...previous.button, ...value } })); }, remove: () => { removed++; setRegistration(null); } }; } });
+    globalThis.__composer = { clear: () => message({ agentId: "agent", event: { type: "replacement", epoch: "new" } }), emit: status => message({ agentId: "agent", event: { type: "timeline", item: tool(status) } }), stats: () => ({ subscriptions, removed }), stop };
     return stop;
   }, []);
   const Status = registration?.button.icon, Content = registration?.button.behavior.Content;
-  return <Runtime.Provider value={{ theme }}><div style={{ padding: 16, background: theme.colors.surface0, minHeight: "100vh" }}>{registration ? <><button data-testid="composer-subagents" onClick={() => setOpen(!open)}>{Status ? <Status {...props} /> : null}{label}</button>{open && Content ? <Content {...props} /> : null}</> : null}</div></Runtime.Provider>;
+  return <Runtime.Provider value={{ theme }}><div style={{ padding: 16, background: theme.colors.surface0, minHeight: "100vh" }}>{registration && registration.button.visible !== false ? <><button data-testid="composer-subagents" onClick={() => setOpen(!open)}>{Status ? <Status {...props} /> : null}{label}</button>{open && Content ? <Content {...props} /> : null}</> : null}</div></Runtime.Provider>;
 }
 createRoot(document.getElementById("root")).render(<App />);

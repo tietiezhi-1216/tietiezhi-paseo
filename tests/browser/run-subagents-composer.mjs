@@ -16,15 +16,20 @@ try {
   browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
   const page = await browser.newPage(), errors = []; page.on("pageerror", e => errors.push(String(e)));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  const trigger = page.getByTestId("composer-subagents"); await trigger.waitFor();
-  await page.waitForFunction(() => document.querySelector('[data-testid="composer-subagents"]').textContent.endsWith("子代理 · 0"));
-  await page.waitForFunction(() => globalThis.__composer.stats().subscriptions === 1);
+  const trigger = page.getByTestId("composer-subagents");
+  await page.waitForFunction(() => globalThis.__composer?.stats().subscriptions === 1);
+  assert.equal(await trigger.count(), 0, "no child records means no capsule, including while history loads");
   await page.evaluate(() => globalThis.__composer.emit("running")); await page.waitForFunction(() => document.querySelector('[data-testid="composer-subagents"]').textContent.endsWith("子代理 · 执行中 · 1"));
   await trigger.click(); await page.getByTestId("subagent-pill").waitFor();
   assert.equal(await page.evaluate(() => globalThis.__composer.stats().subscriptions), 1, "popover shares composer observation");
   await page.getByTestId("subagent-pill").getByRole("button").click(); await page.getByText("子代理输出", { exact: true }).waitFor();
   await page.evaluate(() => globalThis.__composer.emit("completed")); await page.waitForFunction(() => document.querySelector('[data-testid="composer-subagents"]').textContent.endsWith("子代理 · 1")); await page.getByTestId("subagent-pill").getByText("完成 · 1", { exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  // A replaced timeline has no children until its own history is recovered.
+  await page.evaluate(() => globalThis.__composer.clear());
+  await trigger.waitFor({ state: "hidden" });
+  assert.equal(await page.evaluate(() => globalThis.__composer.stats().subscriptions), 1, "hidden capsule still discovers the next child");
+  await page.evaluate(() => globalThis.__composer.emit("running")); await trigger.waitFor();
   await page.evaluate(() => globalThis.__composer.stop()); await trigger.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => globalThis.__composer.stats().subscriptions), 0);
   assert.deepEqual(errors, []); console.log("Subagent composer passed: registration, live counts/status, popover details, shared subscription, mobile width and teardown (mock host).");

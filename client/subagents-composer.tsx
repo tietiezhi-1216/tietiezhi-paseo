@@ -32,26 +32,39 @@ export function contributeSubagentComposer(client: PluginClientContext) {
     remove(agent.id);
     const store = createSubagentsStore(client.paseo.agents.ref(agent.id).timeline);
     let label = "子代理 · 0";
+    let visible = false;
     let registration: ReturnType<PluginClientContext["addComposerPill"]>;
+    const sync = () => {
+      if (stopped || pills.get(agent.id)?.store !== store) return;
+      const snapshot = store.getSnapshot();
+      const running = snapshot.entries.some(entry => entry.data.state === "running");
+      const submitted = snapshot.entries.some(entry => entry.data.state === "submitted");
+      const count = snapshot.entries.reduce((total, entry) => total + (entry.data.children.length || 1), 0);
+      const next = `子代理 · ${running ? "执行中 · " : submitted ? "后台 · " : ""}${count}`;
+      const nextVisible = count > 0;
+      if (next === label && nextVisible === visible) return;
+      label = next; visible = nextVisible;
+      registration.update({ label, visible });
+    };
     const StatusIcon = (props: PluginButtonIconProps) => {
       const snapshot = useSubagents(store);
       const running = snapshot.entries.filter(entry => entry.data.state === "running").length;
       const submitted = snapshot.entries.filter(entry => entry.data.state === "submitted").length;
       const pending = running + submitted;
       const failed = snapshot.error || snapshot.entries.some(entry => entry.data.state === "failed");
-      const count = snapshot.entries.reduce((total, entry) => total + (entry.data.children.length || 1), 0);
-      useEffect(() => {
-        const next = `子代理 · ${running ? "执行中 · " : submitted ? "后台 · " : ""}${count}`;
-        if (stopped || pills.get(agent.id)?.store !== store || next === label) return;
-        label = next; registration.update({ label });
-      }, [running, submitted, count]);
+
       return <Icon name="Users" size={14} color={failed ? props.theme.colors.statusDanger : pending ? props.theme.colors.statusWarning : props.theme.colors.foregroundMuted} />;
     };
     registration = client.addComposerPill({ id: "tietiezhi-subagents", agentId: agent.id, workspaceId: agent.workspaceId, button: {
-      title: "查看当前会话子代理", label, icon: StatusIcon,
+      title: "查看当前会话子代理", label, visible: false, icon: StatusIcon,
       behavior: { kind: "popover", Content: props => <SubagentsPopover {...props} store={store} /> },
     } });
-    pills.set(agent.id, { workspaceId: agent.workspaceId, store, remove: () => registration.remove() });
+    // Hidden buttons do not mount their icon. Keep discovery independent of
+    // rendering so the first child can make the capsule visible.
+    const unlisten = store.subscribe(sync);
+    pills.set(agent.id, { workspaceId: agent.workspaceId, store, remove: () => { unlisten(); release(); registration.remove(); } });
+    const release = store.retain();
+    sync();
   };
   const touched = new Set<string>();
   const unwatch = client.paseo.agents.subscribe(update => {
