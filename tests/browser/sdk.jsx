@@ -25,6 +25,7 @@ export function getPaseoClient(serverId) {
   if (!host || host.status !== "online") throw new Error("Paseo host is disconnected");
   return {
     agents: {
+      subscribe: () => () => {},
       list: async () => ({
         entries: [
           { agent: { id: "shared-id", title: serverId === "local" ? "本机开发任务" : "远程构建任务", provider: "pi", model: "xai/grok",
