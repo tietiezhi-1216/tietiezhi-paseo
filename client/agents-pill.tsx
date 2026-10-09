@@ -788,13 +788,23 @@ function AgentsPopover(props: PluginButtonContentProps) {
     // Reset parent wrapper padding so popover fills the surface completely and footer is flush (desktop only)
     if (!compact) {
       let curr = el.parentElement;
-      while (curr && curr.getAttribute("data-menu-surface") !== "true") {
+      while (curr) {
         curr.style.setProperty("padding", "0px", "important");
         curr.style.setProperty("padding-top", "0px", "important");
         curr.style.setProperty("padding-bottom", "0px", "important");
         curr.style.setProperty("padding-left", "0px", "important");
         curr.style.setProperty("padding-right", "0px", "important");
         curr.style.setProperty("gap", "0px", "important");
+        if (curr.getAttribute("data-menu-surface") === "true") {
+          curr.style.overflow = "hidden";
+          curr.style.overflowY = "hidden";
+          const surfaceRect = curr.getBoundingClientRect();
+          if (surfaceRect.height > 0 && popoverHeight && surfaceRect.height < popoverHeight) {
+            el.style.height = `${surfaceRect.height}px`;
+            el.style.maxHeight = `${surfaceRect.height}px`;
+          }
+          break;
+        }
         curr = curr.parentElement;
       }
     }
@@ -915,6 +925,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
 
       {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock) */}
       <View
+        testID="agents-popover-footer"
         style={{
           flexShrink: 0,
           flexDirection: "row",
@@ -925,10 +936,10 @@ function AgentsPopover(props: PluginButtonContentProps) {
           borderTopColor: props.theme.colors.border,
           backgroundColor: props.theme.colors.surface0,
           paddingHorizontal: 12,
-          paddingVertical: 8,
+          paddingVertical: 9,
         }}
       >
-        <Text numberOfLines={1} style={{ color: props.theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: props.theme.colors.foreground, fontSize: 12, fontWeight: "600", flex: 1 }}>
           当前 · {currentTitle}
         </Text>
         {currentAgentId ? (
@@ -943,12 +954,14 @@ function AgentsPopover(props: PluginButtonContentProps) {
             }}
             style={{
               paddingHorizontal: 8,
-              paddingVertical: 3,
+              paddingVertical: 4,
               borderRadius: 5,
               backgroundColor: props.theme.colors.surface1,
+              borderWidth: 1,
+              borderColor: props.theme.colors.border,
             }}
           >
-            <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foreground, fontSize: 11, fontWeight: "600" }}>
+            <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>
               {copiedCurrent ? "已复制" : "复制 ID"}
             </Text>
           </Pressable>
