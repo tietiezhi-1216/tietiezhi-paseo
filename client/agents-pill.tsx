@@ -235,11 +235,15 @@ function useOwnedAgents(hostId: string, hostName: string) {
     refetchOnReconnect: true,
     retry: 1,
   });
+  const remoteAgents = remote.data?.agents ?? [];
+  const connectedAgents = connected.data ?? [];
+  const connectedKeys = new Set(connectedAgents.map((a) => JSON.stringify([a.serverId ?? a.hostId, a.id])));
+  const allBorrowed = [
+    ...connectedAgents,
+    ...remoteAgents.filter((a) => !connectedKeys.has(JSON.stringify([a.serverId ?? a.hostId, a.id]))),
+  ];
   return {
-    agents: combineOwnedAgents(local, [
-      ...(connected.data ?? []),
-      ...(remote.data?.agents ?? []).filter((agent) => !hosts.some((host) => host.serverId === agent.serverId)),
-    ], hostId),
+    agents: combineOwnedAgents(local, allBorrowed, hostId),
     isPending: local.length === 0 && !remote.data && remote.isPending,
     isError: remote.isError,
   };
@@ -674,26 +678,19 @@ div[aria-label="当前会话与 Agents"] {
   padding-bottom: 0px !important;
 }
 
-/* 4. Completely eliminate all WebKit and Firefox scrollbars */
-::-webkit-scrollbar,
-::-webkit-scrollbar-thumb,
-::-webkit-scrollbar-track,
-*::-webkit-scrollbar,
-*::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-track,
-[data-menu-surface="true"]::-webkit-scrollbar,
-[data-menu-surface="true"] *::-webkit-scrollbar {
+/* 4. Eliminate WebKit scrollbars only inside popover surface */
+[data-menu-surface="true"] ::-webkit-scrollbar {
   display: none !important;
   width: 0px !important;
   height: 0px !important;
   background: transparent !important;
 }
-* {
+[data-menu-surface="true"] * {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
 
-/* 5. Re-enable scrolling ONLY on the middle agent list */
+/* 5. Enable scrolling on the middle agent list */
 .paseo-agents-list-scroll,
 .paseo-agents-list-scroll > div {
   overflow-y: auto !important;
@@ -776,7 +773,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
   };
   const compact = props.layout.compact || props.layout.platform !== "web";
   const windowHeight = Dimensions.get("window").height;
-  const listHeight = Math.min(520, Math.max(380, windowHeight - 260));
+  const popoverHeight = compact ? undefined : Math.min(480, Math.max(300, windowHeight - 160));
   const currentAgentId = "agentId" in props ? (props as any).agentId : "";
   const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
@@ -801,20 +798,6 @@ function AgentsPopover(props: PluginButtonContentProps) {
         curr = curr.parentElement;
       }
     }
-
-    // Only lock the desktop floating menu surface, NEVER lock mobile sheet
-    if (!compact) {
-      let p = el.parentElement;
-      while (p) {
-        p.style.scrollbarWidth = "none";
-        p.style.msOverflowStyle = "none";
-        if (p.getAttribute("data-menu-surface") === "true") {
-          p.style.overflow = "hidden";
-          p.style.overflowY = "hidden";
-        }
-        p = p.parentElement;
-      }
-    }
   }, [compact]);
 
   return (
@@ -823,10 +806,13 @@ function AgentsPopover(props: PluginButtonContentProps) {
       style={{
         alignSelf: "stretch",
         minWidth: compact ? 280 : 360,
+        maxWidth: compact ? undefined : 420,
+        height: popoverHeight,
+        maxHeight: popoverHeight,
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box" as any,
-        overflow: compact ? ("visible" as any) : "hidden",
+        overflow: "hidden",
       }}
     >
       {/* 🔍 1. 顶部固定搜索区 (Clean Native Search Bar) */}
@@ -905,14 +891,13 @@ function AgentsPopover(props: PluginButtonContentProps) {
           style={{
             flex: 1,
             minHeight: 0,
-            height: listHeight,
-            maxHeight: listHeight,
+            overflow: "auto" as any,
             touchAction: "pan-y" as any,
             WebkitOverflowScrolling: "touch" as any,
           }}
           contentContainerStyle={{
             paddingHorizontal: 10,
-            paddingBottom: 9,
+            paddingBottom: 16,
             gap: 8,
             touchAction: "pan-y" as any,
           }}
@@ -938,6 +923,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
           gap: 8,
           borderTopWidth: 1,
           borderTopColor: props.theme.colors.border,
+          backgroundColor: props.theme.colors.surface0,
           paddingHorizontal: 12,
           paddingVertical: 8,
         }}
