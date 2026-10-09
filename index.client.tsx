@@ -7,6 +7,8 @@ import { AccountsPanel } from "./client/accounts.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
 import { ManagerEntry, ManagerScreen } from "./client/manager.tsx";
 import { contributeAgentsPills } from "./client/agents-pill.tsx";
+import { TurnPerformanceBadge } from "./client/performance.tsx";
+import { TurnPerformanceSchema } from "./shared/performance.ts";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
@@ -63,6 +65,12 @@ export default function contribute(client: PluginClientContext) {
           </Text>
         </View>
       ),
+    }),
+    client.addTimelineRenderer({
+      kind: "turn-performance",
+      version: 1,
+      schema: TurnPerformanceSchema,
+      Component: TurnPerformanceBadge,
     }),
   ];
   const stopPills = contributeAgentsPills(client);

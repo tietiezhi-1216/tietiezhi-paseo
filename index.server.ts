@@ -10,11 +10,14 @@ import { startLogin, loginStatus, cancelLogin } from "./shared/login.ts";
 import { handleAgentActivity, reloadRemoteAgent, archiveRemoteAgent, unarchiveRemoteAgent, closeRemoteAgentClients } from "./server/agents.ts";
 import { handleAgentTurnEnded } from "./server/auto-switch.ts";
 import { agentActivity, agentReload, agentArchive, agentUnarchive } from "./shared/agents.ts";
+import { PerformanceService } from "./server/performance.ts";
+import { getModelPerformance } from "./shared/performance.ts";
 
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
   const quotas = new QuotaService();
   quotas.startBackgroundPolling(lifetime.signal);
+  const performance = new PerformanceService();
   const pi = new PiManager();
   server.handle(piInventory, () => pi.inventory(lifetime.signal));
   server.handle(piPackageChange, (input) => pi.change(input, lifetime.signal));
@@ -41,7 +44,12 @@ export default function contribute(server: PluginServerContext) {
   server.handle(agentReload, (input) => reloadRemoteAgent(input));
   server.handle(agentArchive, (input, context) => archiveRemoteAgent(input, context.paseo));
   server.handle(agentUnarchive, (input, context) => unarchiveRemoteAgent(input, context.paseo));
-  server.on("agent.turn_ended", (event, context) => handleAgentTurnEnded(event, context));
+  server.handle(getModelPerformance, (input) => performance.getOverview(input?.query));
+  server.on("agent.turn_started", (event) => performance.onTurnStarted(event));
+  server.on("agent.turn_ended", async (event, context) => {
+    void handleAgentTurnEnded(event, context);
+    await performance.onTurnEnded(event, context);
+  });
   return async () => {
     lifetime.abort();
     quotas.stop();
