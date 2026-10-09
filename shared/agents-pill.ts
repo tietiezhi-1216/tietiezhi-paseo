@@ -1,4 +1,4 @@
-import { agentDisplaySection, type RemoteAgent } from "./agents.ts";
+import { agentDisplaySection, combineOwnedAgents, type RemoteAgent } from "./agents.ts";
 
 export type PillColorKind = "success" | "failure" | "running" | "unknown";
 
@@ -7,7 +7,7 @@ export function agentsPillState(
   pending: boolean,
   failed: boolean,
 ): { label: string; colorKind: PillColorKind } {
-  if (!agents && pending) return { label: "loading", colorKind: "unknown" };
+  if (pending && (!agents || agents.length === 0)) return { label: "loading", colorKind: "unknown" };
   if (failed) return { label: "offline", colorKind: "failure" };
   // Completed agents need attention even while other agents keep working.
   const done = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "done").length;
@@ -20,5 +20,15 @@ export function agentsPillState(
   if (idle > 0) return { label: `idle · ${idle}`, colorKind: "unknown" };
   const closed = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "closed").length;
   if (closed > 0) return { label: `closed · ${closed}`, colorKind: "unknown" };
-  return { label: `idle · ${(agents ?? []).length}`, colorKind: "unknown" };
+  return { label: `idle · ${(agents ?? []).filter((agent) => agentDisplaySection(agent) === "idle").length}`, colorKind: "unknown" };
+}
+
+/** Live connected Hosts override configured snapshots; Host + Agent ID defines identity. */
+export function combineAgentSources(local: RemoteAgent[], connected: RemoteAgent[], configured: RemoteAgent[], hostId: string): RemoteAgent[] {
+  const key = (agent: RemoteAgent) => JSON.stringify([agent.serverId ?? agent.hostId, agent.id]);
+  const connectedKeys = new Set(connected.map(key));
+  return combineOwnedAgents(local, [
+    ...connected,
+    ...configured.filter((agent) => !connectedKeys.has(key(agent))),
+  ], hostId);
 }

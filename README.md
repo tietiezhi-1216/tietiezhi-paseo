@@ -71,6 +71,13 @@ paseo plugin update tietiezhi
 
 **边界**：这是 **App → 多 daemon**，不是无人值守的 daemon → daemon 中转或自主 Agent 编排。远端需要先配对、认证且连接在线。插件不会创建独立网络监听、保存配对密钥、自动开放端口或绕过权限。
 
+### Agents 胶囊
+
+- 胶囊文字、状态圆点和弹窗共用按 Host 隔离的实时目录；数量按 Host + Agent ID 去重，已连接 Host 的实时数据优先于配置缓存。
+- 显示优先级 `done → error → working → idle → closed`，只显示状态与该状态数量；当前会话名保留在弹窗底部。搜索仅过滤列表，不改变全局汇总数量。
+- 使用独立 owned subscription，避免其他筛选视图的 remove 事件误归档 Agent。列表分页完整读取，晚返回的列表不能覆盖更新的完成/归档事件；最后一个读取者离开时释放订阅和计时器。
+- `npm run test:ui` 包含实际胶囊注册、图标及弹窗渲染的跨 Host 模拟回归（不是实际远端 Host 验收）。
+
 ### 展示入口
 
 - 侧边栏顶部的 **tietiezhi** → 仪表盘（Agents / 账号切换 / Host 连接）。
@@ -133,7 +140,7 @@ Relay 为端到端加密，不需要公网开放 daemon 端口。桌面也可使
 
 - `npm run typecheck`：针对已固定的新版 SDK 检查。
 - `npm test`：全部使用临时目录/模拟 SDK，不切换真实账号，不发送真实消息。
-- `npm run test:ui`：Chromium 界面回归，默认使用 macOS Google Chrome；可设置 `CHROME_PATH`，或执行 `npx playwright install chromium`。虚拟时钟验证进度条/动态标题同步、暂停/继续/重置/重播、关闭后继续更新、Host 切换时清理定时器。浏览器加载真实客户端入口的注册逻辑、模拟宿主与 RPC，验证零 Composer 胶囊、顶部/底部注册和位置、单卡账号/额度布局、手动渠道同步、确认切换/切回、渠道变化/延迟返回隔离、离线缓存与卸载清理。
+- `npm run test:ui`：Chromium 界面回归，默认使用 macOS Google Chrome；可设置 `CHROME_PATH`，或执行 `npx playwright install chromium`。虚拟时钟验证进度条/动态标题同步、暂停/继续/重置/重播、关闭后继续更新、Host 切换时清理定时器。浏览器加载真实客户端入口的注册逻辑、模拟宿主与 RPC，验证无额度 Composer 胶囊、Agents 胶囊与列表状态/数量一致、顶部/底部注册和位置、单卡账号/额度布局、手动渠道同步、确认切换/切回、渠道变化/延迟返回隔离、离线缓存与卸载清理。
 - `.artifacts/ui/`：模拟数据的宽屏深色、窄屏浅色截图（不提交）。Dialog 截图使用测试专用的模拟宿主外壳，真实外观以 Paseo App 提供的 Modal 为准。
 
 额度修复验证：类型检查、额度/代理/轮询/Host 缓存测试及桌面深色、移动浅色浏览器模拟回归通过。本机已通过实际插件 RPC 重新获取 Codex、Antigravity 数据；Grok 对缺失比例采用经验证的补充账单响应，不沿用上一周期百分比。远端 Host 的安装版本、网络及具体账号仍须独立验证，不能由本机测试推断。\n

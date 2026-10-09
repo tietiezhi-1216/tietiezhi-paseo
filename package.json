@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:ui": "node tests/browser/run.mjs"
+    "test:ui": "node tests/browser/run.mjs && node tests/browser/run-agents-sync.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

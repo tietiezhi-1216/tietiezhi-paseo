@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Animated, Dimensions, Easing, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
-import { agentsPillState, type PillColorKind } from "../shared/agents-pill.ts";
+import { useQuery } from "@tanstack/react-query";
+import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { agentsPillState, combineAgentSources, type PillColorKind } from "../shared/agents-pill.ts";
+import { localAgentDirectory, retainHostAgents, useLocalAgents } from "./agents-directory.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -49,192 +50,50 @@ function StatusDot({ color, size }: { color: string; size: number }) {
   );
 }
 
-function mapLocalAgent(hostId: string, hostName: string, agent: {
-  id: string;
-  title?: string | null;
-  status: RemoteAgent["status"];
-  requiresAttention?: boolean;
-  attentionReason?: RemoteAgent["attentionReason"];
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  lastUserMessageAt?: string | null;
-  workspaceId?: string | null;
-  archivedAt?: string | null;
-  labels?: Record<string, string>;
-}, workspace: string | null): RemoteAgent {
-  return {
-    hostId,
-    hostName,
-    serverId: hostId,
-    id: agent.id,
-    name: agent.title ?? agent.id,
-    status: agent.status,
-    requiresAttention: agent.requiresAttention ?? false,
-    attentionReason: agent.attentionReason ?? null,
-    createdAt: agent.createdAt ?? null,
-    updatedAt: agent.updatedAt ?? null,
-    lastUserMessageAt: agent.lastUserMessageAt ?? null,
-    workspaceId: agent.workspaceId ?? null,
-    workspace,
-    archivedAt: agent.archivedAt ?? null,
-    parentAgentId: parentAgentIdFromLabels(agent.labels),
-  };
-}
-
-async function listLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: string, hostName: string): Promise<RemoteAgent[]> {
-  const rows: RemoteAgent[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await paseo.agents.list({ page: { limit: 200, cursor }, filter: { includeArchived: true } });
-    for (const { agent, project } of page.entries) {
-      rows.push(mapLocalAgent(hostId, hostName, agent, project.workspaceName ?? null));
-    }
-    cursor = page.pageInfo.hasMore ? page.pageInfo.nextCursor ?? undefined : undefined;
-  } while (cursor);
-  return rows.filter(isDisplayableAgent);
-}
-
-const localAgentMap = new Map<string, RemoteAgent>();
-let localAgentCache: RemoteAgent[] = [];
-let localAgentHostId = "";
-let localAgentHostName = "";
-let localAgentWatch: (() => void) | null = null;
-const localAgentListeners = new Set<() => void>();
-
-function publishLocalAgents() {
-  localAgentCache = [...localAgentMap.values()];
-  for (const listener of localAgentListeners) listener();
-}
-
-function subscribeLocalAgents(listener: () => void) {
-  localAgentListeners.add(listener);
-  return () => { localAgentListeners.delete(listener); };
-}
-
-function getLocalAgents() {
-  return localAgentCache;
-}
-
-function rememberLocalAgent(hostId: string, hostName: string, agent: Parameters<typeof mapLocalAgent>[2], project?: { workspaceName?: string | null } | null) {
-  if (hostId && localAgentHostId !== hostId) {
-    localAgentHostId = hostId;
-    localAgentHostName = hostName;
-  }
-  const row = mapLocalAgent(localAgentHostId || hostId, localAgentHostName || hostName, agent, project?.workspaceName ?? null);
-  if (!isDisplayableAgent(row)) localAgentMap.delete(row.id);
-  else localAgentMap.set(row.id, row);
-  publishLocalAgents();
-}
-
-function forgetLocalAgent(agentId: string) {
-  if (!localAgentMap.delete(agentId)) return;
-  publishLocalAgents();
-}
-
-function watchLocalAgents(paseo: ReturnType<typeof usePaseo>, hostId: string, hostName: string) {
-  if (hostId && localAgentHostId !== hostId) {
-    localAgentHostId = hostId;
-    localAgentHostName = hostName;
-    for (const [id, row] of localAgentMap) {
-      localAgentMap.set(id, { ...row, hostId, hostName, serverId: hostId });
-    }
-    publishLocalAgents();
-  }
-  if (localAgentWatch) return;
-  localAgentHostId = hostId;
-  localAgentHostName = hostName;
-  localAgentWatch = paseo.agents.subscribe((update) => {
-    if (update.kind === "remove") {
-      const existing = localAgentMap.get(update.agentId);
-      if (existing) {
-        localAgentMap.set(update.agentId, { ...existing, archivedAt: existing.archivedAt ?? new Date().toISOString() });
-        publishLocalAgents();
-      }
-    } else {
-      rememberLocalAgent(localAgentHostId, localAgentHostName, update.agent, update.project);
-    }
-  });
-  const refreshListed = () => {
-    void listLocalAgents(paseo, localAgentHostId, localAgentHostName).then((rows) => {
-      const seen = new Set(rows.map((row) => row.id));
-      for (const id of localAgentMap.keys()) {
-        if (!seen.has(id)) {
-          const existing = localAgentMap.get(id);
-          if (!existing?.archivedAt) localAgentMap.delete(id);
-        }
-      }
-      for (const row of rows) localAgentMap.set(row.id, row);
-      publishLocalAgents();
-    }).catch(() => {});
-  };
-  refreshListed();
-  setInterval(refreshListed, 5_000);
-}
-
 function useOwnedAgents(hostId: string, hostName: string) {
   const paseo = usePaseo();
+  const paseoRef = useRef(paseo);
+  paseoRef.current = paseo;
   const rpc = useRpc(agentActivity);
   const hosts = useHosts();
-  const queryClient = useQueryClient();
   const connectedHosts = hosts.filter((host) => host.status === "online" && host.serverId !== hostId);
   const hostSignature = JSON.stringify(connectedHosts.map((host) => [host.serverId, host.label]));
-  const connectedKey = [AGENT_ACTIVITY_QUERY_KEY, "connected", hostId, hostSignature];
-  const connected = useQuery({
-    queryKey: connectedKey,
-    queryFn: async () => {
-      const results = await Promise.allSettled(connectedHosts.map((host) =>
-        listLocalAgents(getPaseoClient(host.serverId), host.serverId, host.label),
-      ));
-      return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-    },
-    refetchInterval: 5_000,
-    staleTime: 2_000,
-    retry: 1,
-  });
+  useSyncExternalStore(localAgentDirectory.subscribeAll, localAgentDirectory.getVersion);
   useEffect(() => {
     const releases: (() => void)[] = [];
+    try { releases.push(retainHostAgents(paseoRef.current, hostId, hostName)); }
+    catch { localAgentDirectory.fail(hostId); }
     for (const host of connectedHosts) {
-      try {
-        releases.push(getPaseoClient(host.serverId).agents.subscribe(() => {
-          void queryClient.invalidateQueries({ queryKey: connectedKey });
-        }));
-      } catch { /* A host can disconnect between discovery and subscription. */ }
+      try { releases.push(retainHostAgents(getPaseoClient(host.serverId), host.serverId, host.label)); }
+      catch { localAgentDirectory.fail(host.serverId); }
     }
     return () => { for (const release of releases) release(); };
-  }, [hostSignature, hostId, queryClient]);
-  useEffect(() => {
-    watchLocalAgents(paseo, hostId, hostName);
-  }, [paseo, hostId, hostName]);
-  const local = useSyncExternalStore(subscribeLocalAgents, getLocalAgents);
+  }, [hostId, hostName, hostSignature]);
   const remote = useQuery({
-    queryKey: [AGENT_ACTIVITY_QUERY_KEY, "remote"],
+    queryKey: [AGENT_ACTIVITY_QUERY_KEY, "remote", hostId],
     queryFn: () => rpc({ refresh: true }),
     staleTime: 0,
     gcTime: 10 * 60_000,
-    placeholderData: (prev) => prev,
     refetchInterval: 5_000,
     refetchIntervalInBackground: true,
     refetchOnMount: "always",
     refetchOnReconnect: true,
     retry: 1,
   });
-  const remoteAgents = remote.data?.agents ?? [];
-  const connectedAgents = connected.data ?? [];
-  const connectedKeys = new Set(connectedAgents.map((a) => JSON.stringify([a.serverId ?? a.hostId, a.id])));
-  const allBorrowed = [
-    ...connectedAgents,
-    ...remoteAgents.filter((a) => !connectedKeys.has(JSON.stringify([a.serverId ?? a.hostId, a.id]))),
-  ];
+  const local = localAgentDirectory.get(hostId);
+  const connected = connectedHosts.map((host) => localAgentDirectory.get(host.serverId));
+  const agents = combineAgentSources(local.agents, connected.flatMap((snapshot) => snapshot.agents), remote.data?.agents ?? [], hostId);
   return {
-    agents: combineOwnedAgents(local, allBorrowed, hostId),
-    isPending: local.length === 0 && !remote.data && remote.isPending,
-    isError: remote.isError,
+    agents,
+    isPending: !local.ready || connected.some((snapshot) => !snapshot.ready) || remote.isPending,
+    isError: agents.length === 0 && local.failed && connected.every((snapshot) => snapshot.failed) && !remote.isPending,
   };
 }
 
-function AgentsStatusIcon(props: PluginButtonIconProps) {
-  const owned = useOwnedAgents(props.host.id, "name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : "");
+function AgentsStatusIcon(props: PluginButtonIconProps & { publishState: (state: ReturnType<typeof agentsPillState>) => void }) {
+  const owned = useOwnedAgents(props.host.id, props.host.label);
   const state = agentsPillState(owned.agents, owned.isPending, owned.isError);
+  useEffect(() => { props.publishState(state); }, [state.label, state.colorKind, props.publishState]);
   const pulse = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     if (state.colorKind !== "running") return;
@@ -250,7 +109,7 @@ function AgentsStatusIcon(props: PluginButtonIconProps) {
   const dot = Math.max(7, Math.round(props.size * 0.5));
   return (
     <View style={{ width: props.size, height: props.size, alignItems: "center", justifyContent: "center" }}>
-      <Animated.View style={{
+      <Animated.View testID="agents-pill-status-dot" style={{
         width: dot, height: dot, borderRadius: dot / 2,
         backgroundColor: color,
         opacity: state.colorKind === "running" ? pulse : 1,
@@ -336,11 +195,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
       ? paseo.agents.ref(agent.id).archive()
       : getPaseoClient(agent.serverId || agent.hostId).agents.ref(agent.id).archive());
     void Promise.resolve(request).then(() => {
-      const existing = localAgentMap.get(agent.id);
-      if (existing) {
-        localAgentMap.set(agent.id, { ...existing, archivedAt: new Date().toISOString() });
-        publishLocalAgents();
-      }
+      localAgentDirectory.archive(agent.serverId || agent.hostId, agent.id);
       setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已归档`);
     }).catch((error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);
@@ -364,11 +219,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     setReloadNote(null);
     unarchiveRpc({ hostId: agent.hostId, serverId: agent.serverId, agentId: agent.id })
       .then(() => {
-        const existing = localAgentMap.get(agent.id);
-        if (existing) {
-          localAgentMap.set(agent.id, { ...existing, archivedAt: null, status: "idle" });
-          publishLocalAgents();
-        }
+        localAgentDirectory.patch(agent.serverId || agent.hostId, agent.id, { archivedAt: null, status: "idle" });
         setReloadNote(`${agent.name || agent.id.slice(0, 8)} 已恢复`);
       })
       .catch((error: unknown) => {
@@ -456,7 +307,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   );
   const section = (label: string, items: typeof all, color: string, breathing = false) => items.length === 0 ? null : (
     <View style={{ gap: 4 }}>
-      <Text style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
+      <Text testID={`agents-section-${label}`} style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map((item) => renderAgentRow(item, label, color, breathing))}
     </View>
   );
@@ -765,7 +616,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const windowHeight = Dimensions.get("window").height;
   const popoverHeight = compact ? undefined : Math.min(480, Math.max(300, windowHeight - 160));
   const currentAgentId = "agentId" in props ? (props as any).agentId : "";
-  const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId && (item.serverId || item.hostId) === props.host.id);
+  const currentAgent = useLocalAgents(paseo, props.host.id, props.host.label).agents.find((item) => item.id === currentAgentId);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
   const [copiedCurrent, setCopiedCurrent] = useState(false);
   const popoverRef = useRef<any>(null);
@@ -803,11 +654,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
       : getPaseoClient(targetAgent.serverId || props.host.id).agents.ref(currentAgentId).archive();
     Promise.resolve(request)
       .then(() => {
-        const existing = localAgentMap.get(currentAgentId);
-        if (existing) {
-          localAgentMap.set(currentAgentId, { ...existing, archivedAt: new Date().toISOString() });
-          publishLocalAgents();
-        }
+        localAgentDirectory.archive(props.host.id, currentAgentId);
         setCurrentNote("已归档");
         setTimeout(() => {
           setCurrentNote(null);
@@ -927,7 +774,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
             theme={props.theme}
             compact={compact}
             currentServerId={props.host.id}
-            hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+            hostName={props.host.label}
             query={query}
             onSelectAgent={selectAgent}
           />
@@ -959,7 +806,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
             theme={props.theme}
             compact={compact}
             currentServerId={props.host.id}
-            hostName={"name" in props.host && typeof (props.host as any).name === "string" ? (props.host as any).name : ""}
+            hostName={props.host.label}
             query={query}
             onSelectAgent={selectAgent}
           />
@@ -1057,118 +904,57 @@ function AgentsPopover(props: PluginButtonContentProps) {
   );
 }
 
-function truncateAgentTitle(title: string, maxChars = 6): string {
-  const clean = title?.trim() ?? "";
-  if (!clean) return "";
-  let width = 0;
-  let truncated = "";
-  const limit = maxChars * 2;
-  for (const char of clean) {
-    const charWidth = char.charCodeAt(0) > 127 ? 2 : 1;
-    if (width + charWidth > limit) {
-      return truncated + "…";
-    }
-    width += charWidth;
-    truncated += char;
-  }
-  return clean;
-}
-
-function formatSessionPill(title: string, state: { label: string; colorKind: PillColorKind }): string {
-  const shortTitle = truncateAgentTitle(title);
-  const status = state.label && state.label !== "loading" ? state.label : "working";
-  if (shortTitle) {
-    return `${shortTitle} · ${status}`;
-  }
-  return status;
-}
-
 export function contributeAgentsPills(client: PluginClientContext) {
   injectScrollbarStyles();
   const pills = new Map<string, {
     workspaceId: string;
-    title: string;
+    label: string;
     pill: ReturnType<PluginClientContext["addComposerPill"]>;
-    updateTitle: (title: string) => void;
     remove: () => void;
   }>();
   let stopped = false;
   let agentSubscription: { release: () => Promise<void> } | undefined;
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let lastState = { label: "", colorKind: "unknown" as PillColorKind };
-
-  const applyLabel = (entry: { title: string; pill: ReturnType<PluginClientContext["addComposerPill"]> }) => {
-    entry.pill.update({ label: formatSessionPill(entry.title, lastState) });
-  };
-
-  const refreshLabels = async () => {
-    if (stopped) return;
-    try {
-      const activity = await client.rpc(agentActivity, {});
-      const local = getLocalAgents().length > 0 ? getLocalAgents() : await listLocalAgents(client.paseo, "", "");
-      lastState = agentsPillState(combineOwnedAgents(local, activity.agents), false, false);
-      for (const entry of pills.values()) applyLabel(entry);
-    } catch {
-      lastState = { label: "读取失败", colorKind: "failure" };
-      for (const entry of pills.values()) applyLabel(entry);
-    }
-  };
 
   const remove = (agentId: string) => {
     pills.get(agentId)?.remove();
     pills.delete(agentId);
   };
 
-  const mountAgentPill = (agentId: string, workspaceId: string, title?: string | null) => {
-    const existing = pills.get(agentId);
-    if (existing?.workspaceId === workspaceId) {
-      if (typeof title === "string" && title.trim()) {
-        existing.updateTitle(title.trim());
-      }
-      return;
-    }
+  const mountAgentPill = (agentId: string, workspaceId: string) => {
+    if (pills.get(agentId)?.workspaceId === workspaceId) return;
     remove(agentId);
-
-    const agentTitle = (typeof title === "string" && title.trim()) || agentId.slice(0, 8);
-    const pill = client.addComposerPill({
+    let pill: ReturnType<PluginClientContext["addComposerPill"]>;
+    const publishState = (state: ReturnType<typeof agentsPillState>) => {
+      const entry = pills.get(agentId);
+      if (stopped || !entry || entry.pill !== pill || entry.label === state.label) return;
+      entry.label = state.label;
+      pill.update({ label: state.label });
+    };
+    // The rendered icon observes exactly the same directory as the popover.
+    // Its snapshot drives BOTH the dot and the registration's text.
+    const Icon = (props: PluginButtonIconProps) => <AgentsStatusIcon {...props} publishState={publishState} />;
+    pill = client.addComposerPill({
       id: "tietiezhi-agents-pill",
       workspaceId,
       agentId,
       button: {
         title: "当前会话与 Agents",
-        icon: AgentsStatusIcon,
-        label: formatSessionPill(agentTitle, lastState),
+        icon: Icon,
+        label: "loading",
         behavior: { kind: "popover", Content: AgentsPopover },
       },
     });
-    const entry = {
-      workspaceId,
-      title: agentTitle,
-      pill,
-      updateTitle: (next: string) => {
-        entry.title = next;
-        applyLabel(entry);
-      },
-      remove: () => {
-        pill.remove();
-      },
-    };
-    pills.set(agentId, entry);
-    applyLabel(entry);
+    pills.set(agentId, { workspaceId, label: "loading", pill, remove: () => pill.remove() });
   };
 
-  const upsert = (agent: { id: string; workspaceId?: string; title?: string | null }) => {
-    if (agent.workspaceId) mountAgentPill(agent.id, agent.workspaceId, agent.title);
+  const upsert = (agent: { id: string; workspaceId?: string }) => {
+    if (agent.workspaceId) mountAgentPill(agent.id, agent.workspaceId);
     else remove(agent.id);
   };
   const unsubscribe = client.paseo.agents.subscribe((update) => {
-    if (update.kind === "remove") {
-      remove(update.agentId);
-      forgetLocalAgent(update.agentId);
-    } else {
-      upsert(update.agent);
-      rememberLocalAgent("", "", update.agent, update.project);
-    }
+    if (stopped) return;
+    if (update.kind === "remove") remove(update.agentId);
+    else upsert(update.agent);
   });
   void (async () => {
     let cursor: string | undefined;
@@ -1187,21 +973,15 @@ export function contributeAgentsPills(client: PluginClientContext) {
       }
       for (const { agent, project } of entries) {
         upsert(agent);
-        rememberLocalAgent("", "", agent, project);
       }
       if (!pageInfo.hasMore) return;
       cursor = pageInfo.nextCursor ?? undefined;
     } while (!stopped);
-  })().then(() => {
-    if (stopped) return;
-    void refreshLabels();
-    timer = setInterval(() => { void refreshLabels(); }, 5_000);
-  }).catch((error: unknown) => {
+  })().catch((error: unknown) => {
     console.error("tietiezhi agents pills init failed", error);
   });
   return () => {
     stopped = true;
-    if (timer) clearInterval(timer);
     unsubscribe?.();
     void agentSubscription?.release();
     agentSubscription = undefined;

@@ -48,9 +48,11 @@ test("加载和离线状态不被完成缓存掩盖", () => {
   assert.deepEqual(agentsPillState(undefined, true, false), { label: "loading", colorKind: "unknown" });
   assert.deepEqual(agentsPillState([done("cached")], false, true), { label: "offline", colorKind: "failure" });
   assert.deepEqual(agentsPillState([], false, false), { label: "idle · 0", colorKind: "unknown" });
+  assert.deepEqual(agentsPillState([], true, false), { label: "loading", colorKind: "unknown" });
+  assert.equal(agentsPillState([agent("archived", { archivedAt: "2026-10-09" })], false, false).label, "idle · 0");
 });
 
-test("真实 Composer Pill 注册使用 done 优先的汇总标签，保留当前会话名", async () => {
+test("Composer Pill 注册不再独立查询或猜测 working，等待同源图标快照驱动文字", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "tietiezhi-pill-priority-"));
   let stop: (() => void) | undefined;
   try {
@@ -65,16 +67,23 @@ test("真实 Composer Pill 注册使用 done 优先的汇总标签，保留当�
     });
     const { contributeAgentsPills } = createRequire(import.meta.url)(outfile);
     const labels: string[] = [];
+    const registered: string[] = [];
+    let directRpcCalls = 0;
     stop = contributeAgentsPills({
-      rpc: async () => ({ agents: [working("w"), done("d1"), done("d2"), error("e")], hosts: [] }),
+      rpc: async () => { directRpcCalls++; return { agents: [working("stale")], hosts: [] }; },
       paseo: { agents: {
         subscribe: () => () => {},
         list: async () => ({ entries: [{ agent: { ...agent("current"), title: "当前会话" } }], pageInfo: { hasMore: false } }),
       } },
-      addComposerPill: () => ({ update: (patch: { label: string }) => labels.push(patch.label), remove() {} }),
+      addComposerPill: (input: { button: { label: string } }) => {
+        registered.push(input.button.label);
+        return { update: (patch: { label: string }) => labels.push(patch.label), remove() {} };
+      },
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(labels.at(-1), "当前会话 · done · 2");
+    assert.deepEqual(registered, ["loading"]);
+    assert.deepEqual(labels, []);
+    assert.equal(directRpcCalls, 0);
   } finally {
     stop?.();
     await rm(temporary, { recursive: true, force: true });
