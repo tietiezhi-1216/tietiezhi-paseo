@@ -1,6 +1,4 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { contributeSubagentPills } from "./client/subagents.tsx";
-import { contributeSubagentComposer } from "./client/subagents-composer.tsx";
 import { Text, View } from "react-native";
 import { z } from "zod";
 import { hexAlpha } from "./client/ui.tsx";
@@ -106,12 +104,8 @@ export default function contribute(client: PluginClientContext) {
       Component: () => null,
     }),
   ];
-  const stopSubagents = contributeSubagentPills(client);
-  const stopSubagentComposer = contributeSubagentComposer(client);
   const stopPills = contributeAgentsPills(client);
   return async () => {
-    stopSubagentComposer();
-    stopSubagents();
     if (typeof stopPills === "function") await stopPills();
     for (const stop of [...stops].reverse()) await stop();
   };

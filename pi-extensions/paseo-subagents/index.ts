@@ -11,7 +11,7 @@ export default function (pi: NativeSubagentAPI) {
   pi.registerTool({
     name: "paseo_subagent",
     label: "Paseo Subagent",
-    description: "Create and manage real Paseo child Agents with native clickable conversation streams. Use only inside Paseo and only when the user authorizes delegation. This is separate from pi-subagents workflows; never migrate active Pi subprocesses or silently fall back to another device. actions: run (fresh-context child), list, read (last 50 timeline entries), stop (interrupt, not delete).",
+    description: "Create and manage real Paseo child Agents with native clickable conversation streams. Use only inside Paseo and only when the user authorizes delegation. Uses Paseo's native child Agent lifecycle; never migrate active subprocesses or silently fall back to another device. actions: run (fresh-context child), list, read (last 50 timeline entries), stop (interrupt, not delete).",
     parameters: Type.Object({
       action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("read"), Type.Literal("stop")]),
       prompt: Type.Optional(Type.String({ maxLength: 32000 })),

@@ -14,6 +14,6 @@ try {
   const resources = loader.getExtensions(); assert.deepEqual(resources.errors, []);
   const extension = resources.extensions.find(extension => extension.path === resolve("pi-extensions/paseo-subagents/index.ts"));
   assert.ok(extension); assert.ok(extension.tools.has("paseo_subagent"));
-  assert.equal(extension.tools.has("subagent"), false, "native bridge must not replace governed pi-subagents workflows");
+  assert.equal(extension.tools.has("subagent"), false, "native bridge exposes paseo_subagent, not the retired subprocess tool");
   console.log("Pi native-subagent resource loads exactly once and registers paseo_subagent without spawning child agents.");
 } finally { await rm(cwd, { recursive: true, force: true }); }

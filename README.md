@@ -78,12 +78,11 @@ paseo plugin update tietiezhi
 - 使用独立 owned subscription，避免其他筛选视图的 remove 事件误归档 Agent。列表分页完整读取，晚返回的列表不能覆盖更新的完成/归档事件；最后一个读取者离开时释放订阅和计时器。
 - `npm run test:ui` 包含实际胶囊注册、图标及弹窗渲染的跨 Host 模拟回归（不是实际远端 Host 验收）。
 
-### 原生子代理胶囊
+### Paseo 原生子代理
 
-- 使用 Pi 扩展 `paseo_subagent` 新建真实的 Paseo 子 Agent，默认继承父会话的模型；详细配置见 [原生子代理](pi-extensions/paseo-subagents/README.md)。
-- 胶囊只统计当前 Host、当前父会话的 `paseo.parent-agent-id` 子 Agent；没有子 Agent 时隐藏，不为每个父会话订阅完整时间线。
-- 弹窗只显示名称和状态。点击直接进入原生对话页，可查看完整流、继续对话或处理权限。
-- 已有 `pi-subagents` 独立任务不自动迁移，工具工作流仍可用。原生胶囊不再把 Run ID、工作流日志当成可导航的 Agent。
+- 使用 Pi 桥接工具 `paseo_subagent` 创建真实的 Paseo 子 Agent，默认继承父会话的模型；详细配置见 [原生子代理](pi-extensions/paseo-subagents/README.md)。
+- 仅使用 Paseo 自带的子 Agent 入口和对话，不注册重复的插件胶囊。
+- 已移除 `pi-subagents` 的独立进程工作流适配、状态存储和自定义时间线展示。历史消息不删除，也不迁移或中断已有独立任务。
 - 此仓库既是 Paseo 插件也是 Pi 包；执行设备需分别安装两者，新 Pi 工具在资源重载或新会话后生效。
 
 ### 展示入口
