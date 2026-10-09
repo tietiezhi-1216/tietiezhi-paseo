@@ -4,10 +4,10 @@ import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginC
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, combineOwnedAgents, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { agentsPillState, type PillColorKind } from "../shared/agents-pill.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
 
 type Theme = PluginSurfaceProps["theme"];
-type PillColorKind = "success" | "failure" | "running" | "unknown";
 
 function formatRelativeTime(value: string | null): string {
   if (!value) return "刚刚";
@@ -31,23 +31,6 @@ function formatRelativeTime(value: string | null): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
-}
-
-function agentsPillState(agents: RemoteAgent[] | undefined, pending: boolean, failed: boolean): { label: string; colorKind: PillColorKind } {
-  if (!agents && pending) return { label: "loading", colorKind: "unknown" };
-  if (failed) return { label: "offline", colorKind: "failure" };
-  const error = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "error").length;
-  if (error > 0) return { label: `error · ${error}`, colorKind: "failure" };
-  const working = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "working").length;
-  if (working > 0) return { label: `working · ${working}`, colorKind: "running" };
-  const done = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "done").length;
-  if (done > 0) return { label: `done · ${done}`, colorKind: "success" };
-  const idle = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "idle").length;
-  if (idle > 0) return { label: `idle · ${idle}`, colorKind: "unknown" };
-  const closed = (agents ?? []).filter((agent) => agentDisplaySection(agent) === "closed").length;
-  if (closed > 0) return { label: `closed · ${closed}`, colorKind: "unknown" };
-  const total = (agents ?? []).length;
-  return { label: `idle · ${total}`, colorKind: "unknown" };
 }
 
 function pillColor(kind: PillColorKind, theme: Theme): string {
