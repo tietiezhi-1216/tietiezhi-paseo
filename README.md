@@ -78,6 +78,14 @@ paseo plugin update tietiezhi
 - 使用独立 owned subscription，避免其他筛选视图的 remove 事件误归档 Agent。列表分页完整读取，晚返回的列表不能覆盖更新的完成/归档事件；最后一个读取者离开时释放订阅和计时器。
 - `npm run test:ui` 包含实际胶囊注册、图标及弹窗渲染的跨 Host 模拟回归（不是实际远端 Host 验收）。
 
+### 原生子代理胶囊
+
+- 使用 Pi 扩展 `paseo_subagent` 新建真实的 Paseo 子 Agent，默认继承父会话的模型；详细配置见 [原生子代理](pi-extensions/paseo-subagents/README.md)。
+- 胶囊只统计当前 Host、当前父会话的 `paseo.parent-agent-id` 子 Agent；没有子 Agent 时隐藏，不为每个父会话订阅完整时间线。
+- 弹窗只显示名称和状态。点击直接进入原生对话页，可查看完整流、继续对话或处理权限。
+- 已有 `pi-subagents` 独立任务不自动迁移，工具工作流仍可用。原生胶囊不再把 Run ID、工作流日志当成可导航的 Agent。
+- 此仓库既是 Paseo 插件也是 Pi 包；执行设备需分别安装两者，新 Pi 工具在资源重载或新会话后生效。
+
 ### 展示入口
 
 - 侧边栏顶部的 **tietiezhi** → 仪表盘（Agents / 账号切换 / Host 连接）。
@@ -139,7 +147,7 @@ Relay 为端到端加密，不需要公网开放 daemon 端口。桌面也可使
 ## 首 token 时间采集
 
 - Pi 扩展源码在 [`pi-extensions/turn-timing/`](pi-extensions/turn-timing/README.md)，与 Paseo 插件同仓库，不复制到全局扩展目录。
-- 本机全局安装：`pi install /absolute/path/to/tietiezhi`。仓库的 `pi.extensions` 只声明采集扩展；Pi 全局配置引用本地源码，不复制文件，各项目都能加载，不依赖各项目的信任设置。远端主机需独立安装。
+- 本机全局安装：`pi install /absolute/path/to/tietiezhi`。仓库的 `pi.extensions` 声明计时采集和原生 Paseo 子代理扩展；Pi 全局配置引用本地源码，不复制文件，各项目都能加载，不依赖各项目的信任设置。远端主机需独立安装。
 - 新 Pi 会话加载后开始采集；已运行的 Pi 会话需在空闲时重载资源。`paseo plugin reload` 只重载展示/读取端，不重载 Pi，不要因此重启 daemon 或中断正在执行的任务。
 - 用单调时钟记录 provider request 到首个非空正文/思考/工具参数增量的耗时；仅保存计时及响应标识，不保存 prompt、输出或凭据，也不进入模型上下文。
 - 页脚只匹配整轮第一次模型响应的数据，不取后续调用均值。旧记录、缺失采集、错误/中断或重复/不匹配元数据仍显示 `ttft —`。自定义 provider 没有转发请求 hook 时无法采集，不用总耗时代替。

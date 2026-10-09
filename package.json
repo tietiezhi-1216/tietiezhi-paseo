@@ -21,7 +21,7 @@
     "pi-extensions/"
   ],
   "pi": {
-    "extensions": ["./pi-extensions/turn-timing/index.ts"]
+    "extensions": ["./pi-extensions/turn-timing/index.ts", "./pi-extensions/paseo-subagents/index.ts"]
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

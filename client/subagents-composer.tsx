@@ -1,91 +1,89 @@
-import { useEffect, useSyncExternalStore } from "react";
-import { Text, View, ScrollView } from "react-native";
-import type { PluginButtonContentProps, PluginButtonIconProps, PluginClientContext } from "@getpaseo/plugin/client";
+import { useState, useSyncExternalStore } from "react";
+import { Text, View, ScrollView, Pressable, Linking } from "react-native";
+import type { PluginButtonContentProps, PluginButtonIconProps, PluginClientContext, PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { createSubagentsStore } from "./subagents-store.ts";
-import { SubagentPill } from "./subagents.tsx";
+import { createNativeSubagentDirectory, nativeChildStatus, type NativeChild } from "../shared/native-subagents.ts";
+import { prepareAgentNavigation } from "../shared/agents.ts";
+import { dispatchWebAgentTarget } from "./web.ts";
 
-type Store = ReturnType<typeof createSubagentsStore>;
-function useSubagents(store: Store) {
-  useEffect(() => store.retain(), [store]);
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-}
-export function SubagentsPopover(props: PluginButtonContentProps & { store: Store }) {
-  const snapshot = useSubagents(props.store);
-  const content = <View style={{ gap: 8, padding: 10 }}>
-    {snapshot.error ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 12 }}>{snapshot.error}</Text> : null}
-    {!snapshot.entries.length ? <Text style={{ color: props.theme.colors.foregroundMuted, fontSize: 12 }}>暂无子代理记录</Text> : null}
-    {[...snapshot.entries].reverse().map(({ id, data }) => <SubagentPill key={id} {...props} agentId={"agentId" in props ? String(props.agentId) : ""} timestamp={new Date()} item={{ type: "plugin", kind: "pi-subagent-pill", version: 1, data }} />)}
+type Directory = ReturnType<typeof createNativeSubagentDirectory>;
+export function SubagentsPopover(props: PluginButtonContentProps & { directory: Directory; parentId: string }) {
+  const children = useSyncExternalStore(props.directory.subscribe, () => props.directory.snapshot(props.parentId), () => props.directory.snapshot(props.parentId));
+  const [error, setError] = useState<string | null>(null);
+  const open = (child: NativeChild) => {
+    try {
+      prepareAgentNavigation({ id: child.id, serverId: props.host.id, workspaceId: child.workspaceId }, {
+        platform: props.layout.platform, currentServerId: props.host.id,
+        navigation: (props as unknown as PluginSurfaceProps).navigation,
+        dispatchWebTarget: dispatchWebAgentTarget,
+        nativeLinking: typeof Linking.emit === "function" && typeof Linking.listenerCount === "function" ? Linking : undefined,
+      })();
+      props.close();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "无法打开子代理"); }
+  };
+  const content = <View style={{ padding: 6, gap: 2 }}>
+    {error ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 12 }}>{error}</Text> : null}
+    {children.map(child => {
+      const status = nativeChildStatus(child);
+      const color = status === "失败" ? props.theme.colors.statusDanger : status === "执行中" || status === "等待授权" ? props.theme.colors.statusWarning : props.theme.colors.foregroundMuted;
+      return <Pressable key={child.id} testID="native-subagent-row" accessibilityRole="button" accessibilityLabel={`打开子代理 ${child.title}`} onPress={() => open(child)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8, paddingVertical: 10 }}>
+        <Text style={{ color, fontSize: 10 }}>●</Text>
+        <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: props.theme.colors.foreground, fontSize: 12 }}>{child.title}</Text>
+        <Text style={{ color, fontSize: 11 }}>{status}</Text>
+        <Icon name="ChevronRight" size={12} color={props.theme.colors.foregroundMuted} />
+      </Pressable>;
+    })}
   </View>;
-  return props.layout.compact || props.layout.platform !== "web" ? content : <ScrollView style={{ maxHeight: 420, minWidth: 320, maxWidth: 420 }}>{content}</ScrollView>;
+  return props.layout.compact || props.layout.platform !== "web" ? content : <ScrollView style={{ maxHeight: 360, minWidth: 280, maxWidth: 360 }}>{content}</ScrollView>;
 }
 
 export function contributeSubagentComposer(client: PluginClientContext) {
-  const pills = new Map<string, { workspaceId: string; store: Store; remove(): void }>();
+  const directory = createNativeSubagentDirectory();
+  const pills = new Map<string, { workspaceId: string; registration: ReturnType<PluginClientContext["addComposerPill"]>; label: string; visible: boolean }>();
   let stopped = false;
   const lifetime = new AbortController();
-  let directory: { release(): Promise<void> } | undefined;
-  const remove = (id: string) => { const row = pills.get(id); pills.delete(id); row?.store.stop(); row?.remove(); };
-  const upsert = (agent: { id: string; workspaceId?: string; provider?: string }) => {
-    if (!agent.workspaceId || (agent.provider && agent.provider !== "pi")) { remove(agent.id); return; }
+  let subscription: { release(): Promise<void> } | undefined;
+  const remove = (id: string) => { pills.get(id)?.registration.remove(); pills.delete(id); directory.remove(id); };
+  const sync = () => {
+    for (const [id, row] of pills) {
+      const children = directory.snapshot(id), active = children.filter(child => ["执行中", "等待授权"].includes(nativeChildStatus(child))).length;
+      const visible = children.length > 0, label = `子代理 · ${active ? "执行中 · " : ""}${children.length}`;
+      if (row.visible !== visible || row.label !== label) { row.visible = visible; row.label = label; row.registration.update({ visible, label }); }
+    }
+  };
+  const unlisten = directory.subscribe(sync);
+  const upsert = (agent: { id: string; workspaceId?: string; provider?: string; labels?: Record<string, string> | null; archivedAt?: string | null; title?: string | null; status?: string; requiresAttention?: boolean; attentionReason?: string | null }) => {
+    directory.upsert(agent);
+    if (!agent.workspaceId || agent.archivedAt || (agent.provider && agent.provider !== "pi")) { pills.get(agent.id)?.registration.remove(); pills.delete(agent.id); return; }
     if (pills.get(agent.id)?.workspaceId === agent.workspaceId) return;
-    remove(agent.id);
-    const store = createSubagentsStore(client.paseo.agents.ref(agent.id).timeline);
-    let label = "子代理 · 0";
-    let visible = false;
-    let registration: ReturnType<PluginClientContext["addComposerPill"]>;
-    const sync = () => {
-      if (stopped || pills.get(agent.id)?.store !== store) return;
-      const snapshot = store.getSnapshot();
-      const running = snapshot.entries.some(entry => entry.data.state === "running");
-      const submitted = snapshot.entries.some(entry => entry.data.state === "submitted");
-      const count = snapshot.entries.reduce((total, entry) => total + (entry.data.children.length || 1), 0);
-      const next = `子代理 · ${running ? "执行中 · " : submitted ? "后台 · " : ""}${count}`;
-      const nextVisible = count > 0;
-      if (next === label && nextVisible === visible) return;
-      label = next; visible = nextVisible;
-      registration.update({ label, visible });
-    };
+    pills.get(agent.id)?.registration.remove();
     const StatusIcon = (props: PluginButtonIconProps) => {
-      const snapshot = useSubagents(store);
-      const running = snapshot.entries.filter(entry => entry.data.state === "running").length;
-      const submitted = snapshot.entries.filter(entry => entry.data.state === "submitted").length;
-      const pending = running + submitted;
-      const failed = snapshot.error || snapshot.entries.some(entry => entry.data.state === "failed");
-
-      return <Icon name="Users" size={14} color={failed ? props.theme.colors.statusDanger : pending ? props.theme.colors.statusWarning : props.theme.colors.foregroundMuted} />;
+      const children = useSyncExternalStore(directory.subscribe, () => directory.snapshot(agent.id), () => directory.snapshot(agent.id));
+      const status = children.some(child => child.status === "error") ? props.theme.colors.statusDanger : children.some(child => ["执行中", "等待授权"].includes(nativeChildStatus(child))) ? props.theme.colors.statusWarning : props.theme.colors.foregroundMuted;
+      return <Icon name="Users" size={14} color={status} />;
     };
-    registration = client.addComposerPill({ id: "tietiezhi-subagents", agentId: agent.id, workspaceId: agent.workspaceId, button: {
-      title: "查看当前会话子代理", label, visible: false, icon: StatusIcon,
-      behavior: { kind: "popover", Content: props => <SubagentsPopover {...props} store={store} /> },
+    const registration = client.addComposerPill({ id: "tietiezhi-subagents", agentId: agent.id, workspaceId: agent.workspaceId, button: {
+      title: "打开子代理对话", label: "子代理 · 0", visible: false, icon: StatusIcon,
+      behavior: { kind: "popover", Content: props => <SubagentsPopover {...props} directory={directory} parentId={agent.id} /> },
     } });
-    // Hidden buttons do not mount their icon. Keep discovery independent of
-    // rendering so the first child can make the capsule visible.
-    const unlisten = store.subscribe(sync);
-    pills.set(agent.id, { workspaceId: agent.workspaceId, store, remove: () => { unlisten(); release(); registration.remove(); } });
-    const release = store.retain();
-    sync();
+    pills.set(agent.id, { workspaceId: agent.workspaceId, registration, label: "子代理 · 0", visible: false }); sync();
   };
   const touched = new Set<string>();
   const unwatch = client.paseo.agents.subscribe(update => {
     if (stopped) return;
-    const id = update.kind === "remove" ? update.agentId : update.agent.id;
-    touched.add(id);
+    const id = update.kind === "remove" ? update.agentId : update.agent.id; touched.add(id);
     if (update.kind === "remove") remove(id); else upsert(update.agent);
   });
   void (async () => {
-    let cursor: string | undefined;
-    const seen = new Set<string>();
+    let cursor: string | undefined; const seen = new Set<string>();
     do {
       const page = await client.paseo.agents.list({ scope: "active", signal: lifetime.signal, page: { limit: 200, cursor }, ...(cursor ? {} : { subscribe: {} }) });
-      if (!cursor) directory = (page as typeof page & { subscription?: { release(): Promise<void> } }).subscription;
-      if (stopped) { await directory?.release(); return; }
+      if (!cursor) subscription = (page as typeof page & { subscription?: { release(): Promise<void> } }).subscription;
+      if (stopped) { await subscription?.release(); return; }
       for (const { agent } of page.entries) if (!touched.has(agent.id)) upsert(agent);
-      if (!page.pageInfo.hasMore || !page.pageInfo.nextCursor || page.pageInfo.nextCursor === cursor) return;
-      if (seen.has(page.pageInfo.nextCursor)) return;
-      cursor = page.pageInfo.nextCursor;
-      seen.add(cursor);
+      if (!page.pageInfo.hasMore || !page.pageInfo.nextCursor || seen.has(page.pageInfo.nextCursor)) return;
+      cursor = page.pageInfo.nextCursor; seen.add(cursor);
     } while (!stopped);
-  })().catch(() => { if (!stopped) console.error("tietiezhi subagent composer directory unavailable"); });
-  return () => { stopped = true; lifetime.abort(); unwatch(); void directory?.release(); for (const id of [...pills.keys()]) remove(id); };
+  })().catch(() => { if (!stopped) console.error("tietiezhi native subagent directory unavailable"); });
+  return () => { stopped = true; lifetime.abort(); unwatch(); unlisten(); void subscription?.release(); for (const row of pills.values()) row.registration.remove(); pills.clear(); directory.clear(); };
 }
