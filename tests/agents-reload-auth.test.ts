@@ -29,6 +29,17 @@ test("current-host restart failure still closes the native connection", async ()
   assert.equal(closed, true);
 });
 
+test("authentication errors identify the failing phase without exposing raw details", async () => {
+  const paseo = { agents: { ref: () => ({ refresh: async () => ({ id: "agent-1" }) }) } } as unknown as PaseoApi;
+  await assert.rejects(reloadCurrentHostAgent("agent-1", paseo, async () => {
+    throw new Error("Incorrect password secret-value");
+  }), (error: Error) => {
+    assert.match(error.message, /连接当前设备 Daemon失败/);
+    assert.doesNotMatch(error.message, /secret-value/);
+    return true;
+  });
+});
+
 test("explicit reload password overrides stale local credential", () => {
   const auth = localDaemonAuth("new-password", "stale-token");
   assert.equal(auth.password, "new-password");

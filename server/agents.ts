@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { AgentHostSchema, isListedAgent, isDisplayableAgent, parentAgentIdFromLabels, resolveHostServerId, resolveReloadHost } from "../shared/agents.ts";
@@ -276,16 +276,29 @@ export async function reloadCurrentHostAgent(
 ) {
   // The handler's SDK is bound to the daemon hosting this plugin, not an App
   // connection id. Verify ownership before invoking the real runtime restart.
-  if (!await paseo.agents.ref(agentId).refresh()) {
-    throw new Error("当前设备不存在此 Agent，未执行重载");
-  }
-  const daemon = await connect();
+  let phase = "验证当前设备 Agent";
+  let daemon: Awaited<ReturnType<typeof connect>> | undefined;
   try {
+    if (!await paseo.agents.ref(agentId).refresh()) {
+      throw new Error("当前设备不存在此 Agent，未执行重载");
+    }
+    phase = "连接当前设备 Daemon";
+    daemon = await connect();
+    phase = "重启 Agent 运行时";
     await daemon.refreshAgent(agentId);
     agentCache = null;
     return { agentId, hostId: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const authentication = /password|incorrect|authentication/i.test(message);
+    // Report phase and device, never credential contents or unfiltered errors.
+    console.error("[tietiezhi reload]", { phase, device: hostname(), authentication, daemonHome: DAEMON_HOME, credentialPresent: Boolean(getLocalCredential()) });
+    if (authentication) {
+      throw new Error(`${phase}失败（设备：${hostname()}）：认证被拒绝；请检查该设备的 Daemon 凭据，不是模型账号密码`);
+    }
+    throw error;
   } finally {
-    await daemon.close().catch(() => {});
+    if (daemon) await daemon.close().catch(() => {});
   }
 }
 
