@@ -44,6 +44,36 @@ function ForkIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: str
   );
 }
 
+const HIDE_NATIVE_FOOTER_STYLE = `
+[data-tietiezhi-native-footer="true"],
+[data-tietiezhi-perf-item="true"] + div {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0px !important;
+  min-height: 0px !important;
+  margin: 0px !important;
+  padding: 0px !important;
+  overflow: hidden !important;
+}
+`;
+
+function injectNativeFooterHideStyle() {
+  if (typeof document === "undefined") return;
+  const id = "tietiezhi-hide-native-footer";
+  let style = document.getElementById(id) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = id;
+    document.head?.appendChild(style);
+  }
+  style.textContent = HIDE_NATIVE_FOOTER_STYLE;
+}
+
+if (typeof document !== "undefined") {
+  injectNativeFooterHideStyle();
+}
+
 /** 1. 彻底由我们接管并重做整行 UI：复制按钮、分叉按钮、耗时、TPS 与 Token 一体化同一行，无缝替换原生旧行 */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
@@ -52,44 +82,39 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    injectNativeFooterHideStyle();
     if (typeof document === "undefined") return;
     const el = badgeRef.current as HTMLElement | null;
     if (!el) return;
 
-    const findNativeFooter = () => {
-      let row = el.parentElement;
-      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
-        if (row.nextElementSibling) break;
-        row = row.parentElement;
-      }
-      if (!row) return false;
-
-      let next = row.nextElementSibling as HTMLElement | null;
-      for (let i = 0; i < 4 && next; i++) {
-        const isFooter = next.querySelector("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")
-          || next.innerText?.includes("工作了");
-        if (isFooter) {
-          const forkBtn = next.querySelector<HTMLElement>("button[aria-label*='fork' i], button[aria-label*='分叉' i], [data-testid*='fork']");
-          if (forkBtn) nativeForkRef.current = forkBtn;
-
-          // 将原生重复的旧 footer 在视觉与布局上完全隐形（占 0 空间）
-          next.style.setProperty("position", "absolute", "important");
-          next.style.setProperty("opacity", "0", "important");
-          next.style.setProperty("pointer-events", "none", "important");
-          next.style.setProperty("height", "0px", "important");
-          next.style.setProperty("min-height", "0px", "important");
-          next.style.setProperty("margin", "0px", "important");
-          next.style.setProperty("padding", "0px", "important");
-          next.style.setProperty("overflow", "hidden", "important");
-          return true;
+    const bindNativeFooter = () => {
+      let curr = el;
+      while (curr && curr.parentElement && curr.parentElement !== document.body) {
+        const parent = curr.parentElement;
+        if (curr.nextElementSibling && parent.children.length > 1) {
+          const next = curr.nextElementSibling as HTMLElement | null;
+          if (next) {
+            const buttons = next.querySelectorAll<HTMLElement>("button");
+            const hasButtonsOrTime = buttons.length > 0 || next.innerText?.includes("工作了");
+            if (hasButtonsOrTime) {
+              curr.setAttribute("data-tietiezhi-perf-item", "true");
+              next.setAttribute("data-tietiezhi-native-footer", "true");
+              if (buttons.length >= 2) {
+                nativeForkRef.current = buttons[1];
+              } else if (buttons.length === 1) {
+                nativeForkRef.current = buttons[0];
+              }
+              return true;
+            }
+          }
         }
-        next = next.nextElementSibling as HTMLElement | null;
+        curr = curr.parentElement;
       }
       return false;
     };
 
-    findNativeFooter();
-    const timers = [60, 200, 500, 1200].map((ms) => setTimeout(findNativeFooter, ms));
+    bindNativeFooter();
+    const timers = [50, 150, 400, 1000].map((ms) => setTimeout(bindNativeFooter, ms));
     return () => { for (const t of timers) clearTimeout(t); };
   }, []);
 
@@ -98,7 +123,7 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
   const handleCopy = () => {
     let textToCopy = data.content || "";
     if (!textToCopy && typeof document !== "undefined" && badgeRef.current) {
-      let prev = badgeRef.current.parentElement?.previousElementSibling as HTMLElement | null;
+      let prev = badgeRef.current.closest?.("[data-tietiezhi-perf-item='true']")?.previousElementSibling as HTMLElement | null;
       if (prev) textToCopy = prev.innerText || "";
     }
     if (textToCopy) {
@@ -110,9 +135,15 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
   };
 
   const handleFork = () => {
-    if (nativeForkRef.current) {
-      nativeForkRef.current.style.pointerEvents = "auto";
-      nativeForkRef.current.click();
+    let forkBtn = nativeForkRef.current;
+    if (!forkBtn && typeof document !== "undefined") {
+      const next = document.querySelector("[data-tietiezhi-native-footer='true']");
+      const btns = next?.querySelectorAll<HTMLElement>("button");
+      if (btns && btns.length >= 2) forkBtn = btns[1];
+    }
+    if (forkBtn) {
+      forkBtn.style.pointerEvents = "auto";
+      forkBtn.click();
     }
   };
 
