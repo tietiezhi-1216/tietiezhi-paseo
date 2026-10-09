@@ -749,6 +749,11 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const [currentReloading, setCurrentReloading] = useState(false);
   const [currentArchiving, setCurrentArchiving] = useState(false);
   const [currentNote, setCurrentNote] = useState<string | null>(null);
+  const [currentReloadError, setCurrentReloadError] = useState<string | null>(null);
+  const [currentNeedsPassword, setCurrentNeedsPassword] = useState(false);
+  const [currentNeedsTarget, setCurrentNeedsTarget] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [currentTarget, setCurrentTarget] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -780,32 +785,38 @@ function AgentsPopover(props: PluginButtonContentProps) {
   const windowHeight = Dimensions.get("window").height;
   const popoverHeight = compact ? undefined : Math.min(480, Math.max(300, windowHeight - 160));
   const currentAgentId = "agentId" in props ? (props as any).agentId : "";
-  const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId);
+  const currentAgent = getLocalAgents().find((item) => item.id === currentAgentId && (item.serverId || item.hostId) === props.host.id);
   const currentTitle = currentAgent?.name || (currentAgentId ? currentAgentId.slice(0, 8) : "当前会话");
   const [copiedCurrent, setCopiedCurrent] = useState(false);
   const popoverRef = useRef<any>(null);
 
   const handleCurrentReload = () => {
-    if (!currentAgentId || currentReloading) return;
+    if (!currentAgentId || currentReloading || currentArchiving) return;
     setCurrentReloading(true);
-    const targetAgent = currentAgent ?? {
-      id: currentAgentId,
+    setCurrentReloadError(null);
+    reloadRpc({
       hostId: props.host.id,
       serverId: props.host.id,
-      name: currentTitle,
-    };
-    reloadRpc({
-      hostId: targetAgent.hostId || props.host.id,
-      serverId: targetAgent.serverId || props.host.id,
       agentId: currentAgentId,
+      ...(currentNeedsPassword ? { password: currentPassword, savePassword: true } : {}),
+      ...(currentNeedsTarget ? { target: currentTarget.trim() } : {}),
     })
       .then(() => {
         setCurrentNote("已重载");
-        setTimeout(() => setCurrentNote(null), 2000);
+        setCurrentNeedsPassword(false);
+        setCurrentNeedsTarget(false);
+        setCurrentPassword("");
+        setCurrentTarget("");
       })
       .catch((err: unknown) => {
-        setCurrentNote(err instanceof Error ? err.message : "重载失败");
-        setTimeout(() => setCurrentNote(null), 3000);
+        const message = err instanceof Error ? err.message : "重载失败";
+        if (/password|密码|incorrect|auth/i.test(message)) {
+          setCurrentNeedsPassword(true);
+          setCurrentNeedsTarget(/尚未配置连接密码与地址/i.test(message));
+          setCurrentReloadError(currentNeedsPassword ? "密码错误或连接失败，请重试" : "重载需要目标设备的连接密码");
+        } else {
+          setCurrentReloadError(message);
+        }
       })
       .finally(() => {
         setCurrentReloading(false);
@@ -990,6 +1001,19 @@ function AgentsPopover(props: PluginButtonContentProps) {
         </ScrollView>
       )}
 
+      {currentReloadError || currentNeedsPassword ? (
+        <View style={{ flexShrink: 0, padding: 10, gap: 8 }}>
+          {currentReloadError ? <Text accessibilityRole="alert" style={{ color: props.theme.colors.statusDanger, fontSize: 11 }}>{currentReloadError}</Text> : null}
+          {currentNeedsPassword ? <>
+            {currentNeedsTarget ? <TextInput accessibilityLabel="当前 Agent 目标地址" placeholder="wss://目标设备/ws" value={currentTarget} onChangeText={setCurrentTarget} autoCapitalize="none" style={{ color: props.theme.colors.foreground, padding: 8, backgroundColor: props.theme.colors.surface1 }} /> : null}
+            <TextInput accessibilityLabel="当前 Agent 连接密码" placeholder="连接密码" secureTextEntry value={currentPassword} onChangeText={setCurrentPassword} autoCapitalize="none" onSubmitEditing={handleCurrentReload} style={{ color: props.theme.colors.foreground, padding: 8, backgroundColor: props.theme.colors.surface1 }} />
+            <View style={{ flexDirection: "row", gap: 16 }}>
+              <Pressable accessibilityRole="button" disabled={currentReloading || !currentPassword || (currentNeedsTarget && !currentTarget.trim())} onPress={handleCurrentReload}><Text style={{ color: props.theme.colors.accent }}>{currentReloading ? "重载中…" : "确认重载"}</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { setCurrentNeedsPassword(false); setCurrentNeedsTarget(false); setCurrentPassword(""); setCurrentTarget(""); setCurrentReloadError(null); }}><Text style={{ color: props.theme.colors.foregroundMuted }}>取消</Text></Pressable>
+            </View>
+          </> : null}
+        </View>
+      ) : null}
       {/* 🔒 3. 底部固定状态坞 (Pinned Action Footer Dock) */}
       <View
         testID="agents-popover-footer"
