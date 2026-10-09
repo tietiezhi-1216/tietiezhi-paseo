@@ -21,73 +21,10 @@ function cleanModelLabel(model: string): string {
   return parts[parts.length - 1] || model;
 }
 
-function CopyIcon({ size = 12, color = "#8b949e" }: { size?: number; color?: string }) {
-  if (typeof document === "undefined") return null;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-/** 1. 彻底重做整行 UI：一体化展示复制按钮、耗时、整轮 TPS 与 Token 消耗，隐藏原生重复 footer */
+/** 1. 单轮会话结束时 AI 回复最下方的性能徽章 */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
-  const badgeRef = useRef<any>(null);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const el = badgeRef.current;
-    if (!el) return;
-
-    // 寻找紧随其后的原生 footer，直接隐藏，避免重复拼凑
-    const hideNativeFooter = () => {
-      let row = el.parentElement;
-      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
-        if (row.nextElementSibling) break;
-        row = row.parentElement;
-      }
-      if (!row) return false;
-
-      let next = row.nextElementSibling as HTMLElement | null;
-      for (let i = 0; i < 4 && next; i++) {
-        const isFooterRow = next.querySelector("[data-testid='turn-working-indicator'], [data-testid*='turn'], button[aria-label*='Copy' i]")
-          || next.innerText?.includes("工作了");
-        if (isFooterRow) {
-          next.style.setProperty("display", "none", "important");
-          return true;
-        }
-        next = next.nextElementSibling as HTMLElement | null;
-      }
-      return false;
-    };
-
-    if (!hideNativeFooter()) {
-      const t1 = setTimeout(hideNativeFooter, 100);
-      const t2 = setTimeout(hideNativeFooter, 300);
-      const t3 = setTimeout(hideNativeFooter, 700);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    }
-  }, []);
-
   if (!data || data.outputTokens <= 0) return null;
-
-  const handleCopy = () => {
-    let textToCopy = data.content || "";
-    if (!textToCopy && typeof document !== "undefined" && badgeRef.current) {
-      // 备选：从上一条消息 DOM 节点读取文本
-      let prev = badgeRef.current.parentElement?.previousElementSibling as HTMLElement | null;
-      if (prev) textToCopy = prev.innerText || "";
-    }
-    if (textToCopy) {
-      void copyText(textToCopy).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }).catch(() => {});
-    }
-  };
 
   const tpsColor = data.tps >= 50
     ? theme.colors.statusSuccess
@@ -102,52 +39,33 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
   return (
     <View
-      ref={badgeRef}
       style={{
-        width: "100%",
         flexDirection: "row",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 8,
-        paddingTop: 6,
-        paddingBottom: 4,
-        marginTop: 0,
+        gap: 6,
+        paddingVertical: 3,
+        marginTop: 4,
+        marginBottom: 4,
+        opacity: 0.9,
       }}
     >
-      {/* 复制按钮 */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="复制消息内容"
-        hitSlop={8}
-        onPress={handleCopy}
-        style={{ flexDirection: "row", alignItems: "center", gap: 4, cursor: "pointer" } as any}
-      >
-        <CopyIcon size={13} color={copied ? theme.colors.statusSuccess : theme.colors.foregroundMuted} />
-        {copied ? (
-          <Text style={{ color: theme.colors.statusSuccess, fontSize: 11, fontWeight: "600" }}>已复制</Text>
-        ) : null}
-      </Pressable>
-
-      {/* 耗时 */}
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
-        {durationStr}
-      </Text>
-
-      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
-
-      {/* ⚡ 整轮真实 TPS 速度 */}
       <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
       </Text>
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
-      {/* 整轮完整 Token 统计 (过千强制 k) */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
         {formatTokens(data.outputTokens)} 出 / {formatTokens(data.inputTokens)} 入{cacheStr}
       </Text>
 
-      {/* 多步骤执行提示 */}
+      <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
+
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
+        耗时 {durationStr}
+      </Text>
+
       {data.steps && data.steps > 1 ? (
         <>
           <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
@@ -159,7 +77,6 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
-      {/* 模型名称 */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "500" }}>
         {cleanModelLabel(data.model)}
       </Text>
