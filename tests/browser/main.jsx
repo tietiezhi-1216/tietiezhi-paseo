@@ -81,7 +81,7 @@ const stopRegistrations = contribute({
   addSidebarHeaderItem: (item) => registerSidebar("header", item),
   addSidebarFooterItem: (item) => registerSidebar("footer", item),
   addScreen: ignore, addSettingsScreen: ignore, addWorkspacePanel: ignore,
-  addCommandCenterItem: ignore, addSlashCommand: ignore, addTimelineRenderer: ignore,
+  addCommandCenterItem: ignore, addSlashCommand: ignore, addTimelineRenderer: ignore, addTimelineTransformer: ignore,
   paseo: {
     agents: {
       subscribe: () => () => {},

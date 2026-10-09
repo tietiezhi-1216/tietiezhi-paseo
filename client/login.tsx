@@ -201,8 +201,8 @@ export function LoginPanel({
             </Text>
           ) : null}
 
-          {error || state?.error || query.isError ? (
-            <Notice theme={theme} error text={error || state?.error || "登录状态读取失败"} />
+          {error || (state?.status === "error" && state?.error) ? (
+            <Notice theme={theme} error text={error || state?.error || "登录失败，请重试"} />
           ) : null}
         </>
       )}

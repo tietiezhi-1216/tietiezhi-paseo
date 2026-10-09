@@ -5,6 +5,7 @@ import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { AccountsPanel } from "./accounts.tsx";
 import { LoginPanel } from "./login.tsx";
 import { PiManagerPanel } from "./pi-manager.tsx";
+import { PerformanceDashboard } from "./performance.tsx";
 import { hexAlpha } from "./ui.tsx";
 import type { Family } from "../shared/accounts.ts";
 
@@ -27,7 +28,7 @@ function ManagerBody(props: PluginScreenProps) {
   const { theme, host, layout } = props;
   const hosts = useHosts();
   const online = hosts.some((entry) => entry.serverId === host.id && entry.status === "online");
-  const [tab, setTab] = useState<"accounts" | "plugins">("accounts");
+  const [tab, setTab] = useState<"accounts" | "plugins" | "performance">("accounts");
   const [login, setLogin] = useState<Family | null>(null);
 
   return (
@@ -108,6 +109,27 @@ function ManagerBody(props: PluginScreenProps) {
               Pi 插件
             </Text>
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="模型测速"
+            onPress={() => { setTab("performance"); setLogin(null); }}
+            style={{
+              paddingVertical: 5,
+              paddingHorizontal: 16,
+              borderRadius: 5,
+              backgroundColor: tab === "performance" ? hexAlpha(theme.colors.foreground, 0.08) : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                color: tab === "performance" ? theme.colors.foreground : theme.colors.foregroundMuted,
+                fontSize: 12,
+                fontWeight: tab === "performance" ? "600" : "400",
+              }}
+            >
+              ⚡ 模型测速
+            </Text>
+          </Pressable>
         </View>
 
         {/* Right Actions: Add Account & Device Badge */}
@@ -148,7 +170,9 @@ function ManagerBody(props: PluginScreenProps) {
       </View>
 
       {/* Body Area */}
-      {tab === "plugins" ? (
+      {tab === "performance" ? (
+        <PerformanceDashboard {...props} />
+      ) : tab === "plugins" ? (
         <PiManagerPanel {...props} />
       ) : (
         <View style={{ gap: 12 }}>

@@ -46,10 +46,10 @@ export async function handleAgentTurnEnded(
 
   recentSwitches.set(event.agent.id, Date.now());
 
-  const notification = `[模型额度] 额度已耗尽，已自动切至 ${switchResult.next.label}，正在继续会话...`;
+  const notification = `[模型额度] 额度已耗尽，已自动切至 ${switchResult.next.label}`;
   console.log(`[AUTO-SWITCH] ${event.agent.id} exhausted, switched from ${switchResult.previous.label} to ${switchResult.next.label}`);
 
-  // 1. Append timeline row
+  // 1. Append clean notification banner to timeline
   try {
     await context.paseo.agents.ref(event.agent.id).timeline.append({
       type: "plugin",
@@ -60,9 +60,9 @@ export async function handleAgentTurnEnded(
     });
   } catch {}
 
-  // 2. Send continuation prompt to resume conversation
+  // 2. Send clean continuation prompt "继续" to resume conversation without polluting context
   try {
-    await context.paseo.agents.ref(event.agent.id).send(notification);
+    await context.paseo.agents.ref(event.agent.id).send("继续");
   } catch (err) {
     console.error(`[AUTO-SWITCH] Failed to send continuation message to ${event.agent.id}:`, err);
   }

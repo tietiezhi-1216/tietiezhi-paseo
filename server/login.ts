@@ -148,22 +148,15 @@ const antigravityOAuthFlow: OAuthFlow = {
 
 export async function loadLoginFlow(family: LoginFamily): Promise<OAuthFlow> {
   if (family === "antigravity") return antigravityOAuthFlow;
-  let entry: string;
   try {
-    const manifest = findPackageJSON("@earendil-works/pi-ai", import.meta.url);
-    if (!manifest) throw new Error("缺少登录依赖");
-    entry = join(dirname(manifest), "dist", "oauth.js");
+    const oauthUrl = import.meta.resolve("@earendil-works/pi-ai/oauth");
+    const targetUrl = new URL(`auth/oauth/${family === "codex" ? "openai-codex.js" : "xai.js"}`, oauthUrl);
+    const module = await import(targetUrl.href);
+    return family === "codex" ? module.openaiCodexOAuth : module.xaiOAuth;
+  } catch (err: unknown) {
+    console.error(`[LOAD LOGIN FLOW ERROR for ${family}]`, err);
+    throw new Error(`登录模块加载失败: ${err instanceof Error ? err.message : String(err)}`);
   }
-  catch {
-    const home = process.env.PASEO_HOME || join(homedir(), ".paseo");
-    const config = JSON.parse(await readFile(join(home, "config.json"), "utf8"));
-    const directory = config.plugins?.tietiezhi?.path;
-    if (typeof directory !== "string") throw new Error("登录模块不可用");
-    entry = join(directory, "node_modules", "@earendil-works", "pi-ai", "dist", "oauth.js");
-  }
-  const file = join(dirname(entry), "auth", "oauth", family === "codex" ? "openai-codex.js" : "xai.js");
-  const module = await import(pathToFileURL(file).href);
-  return family === "codex" ? module.openaiCodexOAuth : module.xaiOAuth;
 }
 
 export class LoginService {
@@ -232,10 +225,14 @@ export class LoginService {
         await new AccountService(paths).addLogin(state.family, credential, controller.signal);
       }
       state.status = "done";
-    } catch {
+    } catch (err: unknown) {
       if (state.status !== "cancelled") {
-        state.status = "error";
-        state.error = controller.signal.aborted ? "登录已超时，请重试" : "登录未完成，请重试";
+        if (controller.signal.aborted || (err instanceof Error && err.message.toLowerCase().includes("cancel"))) {
+          state.status = "cancelled";
+        } else {
+          state.status = "error";
+          state.error = err instanceof Error ? err.message : "登录未完成，请重试";
+        }
       }
     } finally {
       clearTimeout(session.timer);
