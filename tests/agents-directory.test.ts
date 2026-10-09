@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AgentDirectory } from "../shared/agents-directory.ts";
+import { createAgentDirectory } from "../shared/agents-directory.ts";
 import { combineAgentSources, agentsPillState } from "../shared/agents-pill.ts";
 import type { RemoteAgent } from "../shared/agents.ts";
 import type { PaseoApi } from "@getpaseo/client";
@@ -13,7 +13,7 @@ function agent(host: string, id = "same-id", extra: Partial<RemoteAgent> = {}): 
 }
 
 test("切换 Host 不重标记前一个 Host 的 Agent，同 ID 分别保留", () => {
-  const directory = new AgentDirectory();
+  const directory = createAgentDirectory();
   directory.replace("a", [agent("a")]);
   directory.replace("b", [agent("b", "same-id", { status: "idle", attentionReason: "finished" })]);
   assert.equal(directory.get("a").agents[0].serverId, "a");
@@ -26,7 +26,7 @@ test("切换 Host 不重标记前一个 Host 的 Agent，同 ID 分别保留", (
 });
 
 test("晚返回的列表不覆盖完成事件，其他未变化行照常更新", () => {
-  const directory = new AgentDirectory();
+  const directory = createAgentDirectory();
   directory.replace("a", [agent("a"), agent("a", "other")]);
   const revision = directory.revision("a");
   directory.upsert("a", agent("a", "same-id", { status: "idle", attentionReason: "finished" }));
@@ -36,7 +36,7 @@ test("晚返回的列表不覆盖完成事件，其他未变化行照常更新",
 });
 
 test("列举期间新增或归档的 Agent 不被旧列表删除或复活", () => {
-  const directory = new AgentDirectory();
+  const directory = createAgentDirectory();
   const revision = directory.revision("a");
   directory.archive("a", "removed");
   directory.upsert("a", agent("a", "new"));
@@ -57,7 +57,7 @@ test("跨 Host 实时快照覆盖配置缓存，不重复计数，不包含子 A
 });
 
 test("所有读取者收到同一版本快照，取消订阅后不再收到更新", () => {
-  const directory = new AgentDirectory();
+  const directory = createAgentDirectory();
   const seen: number[] = [];
   const stop = directory.subscribeAll(() => { seen.push(directory.getVersion()); });
   directory.replace("a", []);

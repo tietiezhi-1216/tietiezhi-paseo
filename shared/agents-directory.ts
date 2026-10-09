@@ -9,66 +9,64 @@ type HostDirectory = {
   listeners: Set<() => void>;
 };
 
-/** One identity space per Host; list responses cannot undo newer directory events. */
-export class AgentDirectory {
-  private hosts = new Map<string, HostDirectory>();
-  private listeners = new Set<() => void>();
-  private version = 0;
+/**
+ * One identity space per Host; list responses cannot undo newer directory events.
+ * Keep this class-free: Paseo evaluates client bundles directly, without Metro's
+ * class transform, and Hermes can fail when constructing an evaluated class.
+ */
+export function createAgentDirectory() {
+  const hosts = new Map<string, HostDirectory>();
+  const listeners = new Set<() => void>();
+  let version = 0;
 
-  getVersion = (): number => this.version;
-  subscribeAll = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
-  };
-
-  private host(hostId: string): HostDirectory {
-    let host = this.hosts.get(hostId);
+  function getHost(hostId: string): HostDirectory {
+    let host = hosts.get(hostId);
     if (!host) {
       host = { rows: new Map(), versions: new Map(), revision: 0, snapshot: { agents: [], ready: false, failed: false }, listeners: new Set() };
-      this.hosts.set(hostId, host);
+      hosts.set(hostId, host);
     }
     return host;
   }
 
-  get(hostId: string): AgentDirectorySnapshot { return this.host(hostId).snapshot; }
-  revision(hostId: string): number { return this.host(hostId).revision; }
-  subscribe(hostId: string, listener: () => void): () => void {
-    const host = this.host(hostId);
+  function get(hostId: string): AgentDirectorySnapshot { return getHost(hostId).snapshot; }
+  function revision(hostId: string): number { return getHost(hostId).revision; }
+  function subscribe(hostId: string, listener: () => void): () => void {
+    const host = getHost(hostId);
     host.listeners.add(listener);
     return () => { host.listeners.delete(listener); };
   }
 
-  private publish(host: HostDirectory, ready = host.snapshot.ready, failed = host.snapshot.failed): void {
+  function publish(host: HostDirectory, ready = host.snapshot.ready, failed = host.snapshot.failed): void {
     host.snapshot = { agents: [...host.rows.values()], ready, failed };
-    this.version++;
+    version++;
     for (const listener of host.listeners) listener();
-    for (const listener of this.listeners) listener();
+    for (const listener of listeners) listener();
   }
 
-  upsert(hostId: string, agent: RemoteAgent): void {
-    const host = this.host(hostId);
+  function upsert(hostId: string, agent: RemoteAgent): void {
+    const host = getHost(hostId);
     host.versions.set(agent.id, ++host.revision);
     if (agent.parentAgentId) host.rows.delete(agent.id);
     else host.rows.set(agent.id, { ...agent, hostId, serverId: hostId });
-    this.publish(host);
+    publish(host);
   }
 
-  patch(hostId: string, id: string, patch: Partial<RemoteAgent>): void {
-    const existing = this.host(hostId).rows.get(id);
-    if (existing) this.upsert(hostId, { ...existing, ...patch, id });
+  function patch(hostId: string, id: string, patch: Partial<RemoteAgent>): void {
+    const existing = getHost(hostId).rows.get(id);
+    if (existing) upsert(hostId, { ...existing, ...patch, id });
   }
 
-  archive(hostId: string, id: string, now = new Date().toISOString()): void {
-    const host = this.host(hostId);
+  function archive(hostId: string, id: string, now = new Date().toISOString()): void {
+    const host = getHost(hostId);
     const existing = host.rows.get(id);
     // Remember removals even before the first list finishes.
     host.versions.set(id, ++host.revision);
     if (existing) host.rows.set(id, { ...existing, archivedAt: existing.archivedAt ?? now });
-    this.publish(host);
+    publish(host);
   }
 
-  replace(hostId: string, agents: RemoteAgent[], startedAtRevision = this.revision(hostId)): void {
-    const host = this.host(hostId);
+  function replace(hostId: string, agents: RemoteAgent[], startedAtRevision = revision(hostId)): void {
+    const host = getHost(hostId);
     const seen = new Set(agents.map((agent) => agent.id));
     for (const [id, existing] of host.rows) {
       if (!seen.has(id) && !existing.archivedAt && (host.versions.get(id) ?? 0) <= startedAtRevision) host.rows.delete(id);
@@ -78,8 +76,19 @@ export class AgentDirectory {
       if (agent.parentAgentId) host.rows.delete(agent.id);
       else host.rows.set(agent.id, { ...agent, hostId, serverId: hostId });
     }
-    this.publish(host, true, false);
+    publish(host, true, false);
   }
 
-  fail(hostId: string): void { this.publish(this.host(hostId), true, true); }
+  function fail(hostId: string): void { publish(getHost(hostId), true, true); }
+
+  return {
+    get, revision, subscribe, upsert, patch, archive, replace, fail,
+    getVersion: (): number => version,
+    subscribeAll: (listener: () => void): (() => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
 }
+
+export type AgentDirectory = ReturnType<typeof createAgentDirectory>;

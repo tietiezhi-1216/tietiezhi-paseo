@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { PaseoApi, PaseoAgentUpdate, PaseoAgentListResult, OwnedSubscription as NativeOwnedSubscription } from "@getpaseo/client";
-import { AgentDirectory } from "../shared/agents-directory.ts";
+import { createAgentDirectory } from "../shared/agents-directory.ts";
 import { isDisplayableAgent, parentAgentIdFromLabels, type RemoteAgent } from "../shared/agents.ts";
 
 type LocalAgent = {
@@ -38,7 +38,7 @@ export async function listHostAgents(paseo: PaseoApi, hostId: string, hostName: 
   return rows.filter(isDisplayableAgent);
 }
 
-export const localAgentDirectory = new AgentDirectory();
+export const localAgentDirectory = createAgentDirectory();
 type Watch = { references: number; active: boolean; busy: boolean; subscription?: OwnedSubscription; timer?: ReturnType<typeof setInterval>; unsubscribe?: () => void; unsubscribeOwned?: () => void };
 const watches = new Map<string, Watch>();
 

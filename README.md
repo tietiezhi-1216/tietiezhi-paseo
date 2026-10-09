@@ -155,6 +155,7 @@ Relay 为端到端加密，不需要公网开放 daemon 端口。桌面也可使
 
 - `npm run typecheck`：针对已固定的新版 SDK 检查。
 - `npm test`：全部使用临时目录/模拟 SDK，不切换真实账号，不发送真实消息。
+- `npm run test:hermes`：使用 React Native 附带的真实 Hermes 引擎，通过 `eval` 加载未经 Metro 转换的 Agents 缓存实现，检查初始化、跨 Host 隔离、事件覆盖和订阅清理；可用 `HERMES_BIN` 指定引擎路径。这是引擎兼容性回归，不是手机 App 界面验收。
 - `npm run test:ui`：Chromium 界面回归，默认使用 macOS Google Chrome；可设置 `CHROME_PATH`，或执行 `npx playwright install chromium`。虚拟时钟验证进度条/动态标题同步、暂停/继续/重置/重播、关闭后继续更新、Host 切换时清理定时器。浏览器加载真实客户端入口的注册逻辑、模拟宿主与 RPC，验证无额度 Composer 胶囊、Agents 胶囊与列表状态/数量一致、顶部/底部注册和位置、单卡账号/额度布局、手动渠道同步、确认切换/切回、渠道变化/延迟返回隔离、离线缓存与卸载清理。
 - `.artifacts/ui/`：模拟数据的宽屏深色、窄屏浅色截图（不提交）。Dialog 截图使用测试专用的模拟宿主外壳，真实外观以 Paseo App 提供的 Modal 为准。
 
