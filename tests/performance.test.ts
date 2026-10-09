@@ -93,3 +93,17 @@ test("PerformanceService calculates delta usage and records turn performance", a
   assert.equal(modelStat.totalOutputTokens >= 500, true);
   assert.ok(modelStat.avgTps > 0);
 });
+
+test("formatTokens formats values >= 1000 with k and M accurately", async () => {
+  const { formatTokens } = await import("../shared/performance.ts");
+  assert.equal(formatTokens(252), "252");
+  assert.equal(formatTokens(684), "684");
+  assert.equal(formatTokens(999), "999");
+  assert.equal(formatTokens(1000), "1.0k");
+  assert.equal(formatTokens(1250), "1.3k");
+  assert.equal(formatTokens(9468), "9.5k");
+  assert.equal(formatTokens(17000), "17k");
+  assert.equal(formatTokens(643024), "643k");
+  assert.equal(formatTokens(1500000), "1.5M");
+  assert.equal(formatTokens(9300000), "9.3M");
+});

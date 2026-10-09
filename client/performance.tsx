@@ -3,20 +3,8 @@ import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from 
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { getModelPerformance, type TurnPerformanceData, type ModelPerformanceStats, type PerformanceOverview } from "../shared/performance.ts";
+import { getModelPerformance, formatTokens, type TurnPerformanceData, type ModelPerformanceStats, type PerformanceOverview } from "../shared/performance.ts";
 import { hexAlpha } from "./ui.tsx";
-
-export function formatTokens(count: number): string {
-  if (count >= 1_000_000) {
-    const m = count / 1_000_000;
-    return `${m >= 10 ? Math.round(m) : m.toFixed(1)}M`;
-  }
-  if (count >= 1_000) {
-    const k = count / 1_000;
-    return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
-  }
-  return `${count}`;
-}
 
 function formatDuration(ms: number): string {
   const totalSec = Math.round(ms / 1000);

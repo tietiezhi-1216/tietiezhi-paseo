@@ -16,6 +16,18 @@ export const TurnPerformanceSchema = z.object({
 });
 export type TurnPerformanceData = z.infer<typeof TurnPerformanceSchema>;
 
+export function formatTokens(count: number): string {
+  if (count >= 1_000_000) {
+    const m = count / 1_000_000;
+    return `${m >= 10 ? Math.round(m) : m.toFixed(1)}M`;
+  }
+  if (count >= 1_000) {
+    const k = count / 1_000;
+    return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
+  }
+  return `${count}`;
+}
+
 export const ModelPerformanceStatsSchema = z.object({
   model: z.string(),
   provider: z.string(),

@@ -23,7 +23,7 @@ const STORE_PATH = join(homedir(), ".paseo", "tietiezhi", "model-performance.jso
 function extractTurnUsageFromNativeHandle(
   nativeHandle?: string | null,
   turnStartTime?: number,
-): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string } | null {
+): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string; durationMs: number } | null {
   if (!nativeHandle || !existsSync(nativeHandle)) return null;
   try {
     const rawContent = readFileSync(nativeHandle, "utf8");
@@ -32,6 +32,7 @@ function extractTurnUsageFromNativeHandle(
 
     // Find the last user message index that initiated this turn
     let lastUserIndex = -1;
+    let userTimestamp = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -39,6 +40,7 @@ function extractTurnUsageFromNativeHandle(
         const entry = JSON.parse(line);
         if (entry.type === "message" && entry.message?.role === "user") {
           lastUserIndex = i;
+          userTimestamp = entry.timestamp ? Date.parse(entry.timestamp) : 0;
           break;
         }
       } catch {}
@@ -52,6 +54,7 @@ function extractTurnUsageFromNativeHandle(
     let reasoning = 0;
     let steps = 0;
     let lastAssistantText = "";
+    let lastAssistantTime = 0;
 
     for (let i = sliceFrom; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -67,6 +70,9 @@ function extractTurnUsageFromNativeHandle(
             cached += (u.cacheRead || 0);
             reasoning += (u.reasoning || 0);
           }
+          const t = entry.timestamp ? Date.parse(entry.timestamp) : 0;
+          if (t > lastAssistantTime) lastAssistantTime = t;
+
           // Extract text for clipboard copying
           const contentItems = entry.message.content;
           if (Array.isArray(contentItems)) {
@@ -83,7 +89,10 @@ function extractTurnUsageFromNativeHandle(
     }
 
     if (output > 0) {
-      return { input, output, cached, reasoning, steps, content: lastAssistantText };
+      const finishTime = lastAssistantTime || Date.now();
+      const startTime = userTimestamp || (turnStartTime && turnStartTime > 0 ? turnStartTime : finishTime - 5_000);
+      const durationMs = Math.max(500, finishTime - startTime);
+      return { input, output, cached, reasoning, steps, content: lastAssistantText, durationMs };
     }
   } catch {}
   return null;
@@ -129,9 +138,9 @@ export class PerformanceService {
     event: PluginLifecycleEvents["agent.turn_ended"],
     context: PluginHookContext,
   ): Promise<TurnPerformanceData | null> {
-    const startTime = this.turnStartTimes.get(event.agent.id) ?? (Date.now() - 1_000);
+    const startTime = this.turnStartTimes.get(event.agent.id) ?? (Date.now() - 5_000);
     this.turnStartTimes.delete(event.agent.id);
-    const durationMs = Math.max(120, Date.now() - startTime);
+    let durationMs = Math.max(500, Date.now() - startTime);
 
     let modelName = "unknown";
     let providerName = event.agent.provider || "ai";
@@ -166,6 +175,7 @@ export class PerformanceService {
         deltaReasoning = nativeUsage.reasoning;
         turnSteps = nativeUsage.steps;
         assistantContent = nativeUsage.content;
+        durationMs = nativeUsage.durationMs;
       } else {
         // Method 2: Fallback to cumulative delta with baseline guard
         const current = snapshot?.agent?.lastUsage;
