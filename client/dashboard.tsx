@@ -4,9 +4,10 @@ import { useAgent, type PluginAgentPanelProps, type PluginScreenProps, type Plug
 import { AccountsPanel } from "./accounts.tsx";
 import { AgentsPanel } from "./agents.tsx";
 import { HostsPanel } from "./hosts.tsx";
+import { PerformanceDashboard } from "./performance.tsx";
 import { Tabs, Notice } from "./ui.tsx";
 
-type Tab = "accounts" | "agents" | "hosts";
+type Tab = "accounts" | "agents" | "hosts" | "performance";
 function DashboardBody({ props, initialTab, children }: {
   props: PluginSurfaceProps; initialTab: Tab; children?: React.ReactNode;
 }) {
@@ -16,13 +17,13 @@ function DashboardBody({ props, initialTab, children }: {
     <ScrollView style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
       contentContainerStyle={{ padding: layout.compact ? 12 : 16, gap: 10 }}>
       {children}
-      <Tabs theme={theme} items={[["agents", "Agents"], ["accounts", "账号"], ["hosts", "主机"]]} value={tab} onChange={setTab} prefix="tab" />
-      {tab === "accounts" ? <AccountsPanel {...props} /> : tab === "agents" ? <AgentsPanel {...props} /> : <HostsPanel {...props} />}
+      <Tabs theme={theme} items={[["agents", "Agents"], ["accounts", "账号"], ["hosts", "主机"], ["performance", "测速"]]} value={tab} onChange={setTab} prefix="tab" />
+      {tab === "accounts" ? <AccountsPanel {...props} /> : tab === "agents" ? <AgentsPanel {...props} /> : tab === "performance" ? <PerformanceDashboard {...props} /> : <HostsPanel {...props} />}
     </ScrollView>
   );
 }
 export function DashboardScreen(props: PluginScreenProps) {
-  const tab: Tab = props.params.tab === "accounts" || props.params.tab === "hosts" ? props.params.tab : "agents";
+  const tab: Tab = props.params.tab === "accounts" || props.params.tab === "hosts" || props.params.tab === "performance" ? props.params.tab : "agents";
   return <DashboardBody key={`${props.host.id}:${tab}`} props={props} initialTab={tab} />;
 }
 export function AgentDashboard(props: PluginAgentPanelProps) {

@@ -200,6 +200,9 @@ function App() {
         calls.push({ kind: "agent-unarchive", serverId: hostId, input });
         return { agentId: input.agentId, unarchived: true };
       }
+      if (name === "slotgame.performance.overview") {
+        return { models: [], overallAvgTps: 0, totalTurns: 0, totalInputTokens: 0, totalOutputTokens: 0 };
+      }
       calls.push({ kind: "switch", serverId: hostId, input });
       snapshots[hostId] = { ...snapshots[hostId], revision: "c".repeat(64), accounts: snapshots[hostId].accounts.map((a) => ({ ...a, active: a.id === input.id })) };
       return { snapshot: structuredClone(snapshots[hostId]), backupCreated: true, notice: "测试切换成功" };
