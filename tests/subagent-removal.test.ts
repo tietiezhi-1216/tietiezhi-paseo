@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
+import { URL } from "node:url";
 
 const file = (path: string) => new URL(`../${path}`, import.meta.url);
 test("only native Paseo subagents are exposed; no legacy adapter or duplicate composer entrance", () => {

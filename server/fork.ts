@@ -10,16 +10,25 @@ import type { TurnPerformanceData } from "../shared/performance.ts";
 
 const execFileAsync = promisify(execFile);
 
+/** A daemon bind address is not necessarily its loopback connection address. */
+export function resolveForkConnection(status: { serverId?: string; listen?: unknown; home?: unknown }, expectedServerId: string) {
+  if (status.serverId !== expectedServerId) throw new Error("分叉 Host 不匹配，已中止；不会回退到其他主机。");
+  if (typeof status.home !== "string" || !status.home.trim()) throw new Error("当前 Host 未提供本机 daemon 目录，无法读取分叉连接凭据。");
+  const match = typeof status.listen === "string" ? /^(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]|\[::\]):(\d+)$/.exec(status.listen) : null;
+  const port = match ? Number(match[2]) : 0;
+  if (!match || port < 1 || port > 65535) throw new Error("当前 Host 的监听地址不支持安全的本机分叉连接；未创建分叉。");
+  const host = match[1].startsWith("[") ? "[::1]" : "127.0.0.1";
+  return { url: `ws://${host}:${port}/ws`, home: status.home };
+}
+
 // DaemonClient owns the native fork-context protocol. Never expose its credentials to the UI.
 export async function connectForkDaemon(expectedServerId: string) {
   const { stdout } = await execFileAsync("paseo", ["daemon", "status", "--json"], { timeout: 10_000, maxBuffer: 512_000 });
-  const status = JSON.parse(stdout);
-  if (status.serverId !== expectedServerId) throw new Error("分叉 Host 不匹配，已中止；不会回退到其他主机。");
-  if (!/^(127\.0\.0\.1|\[::1\]):\d+$/.test(status.listen) || typeof status.home !== "string") throw new Error("当前 Host 没有可用的本机分叉连接。");
+  const connection = resolveForkConnection(JSON.parse(stdout), expectedServerId);
   const daemon = new DaemonClient({
-    url: `ws://${status.listen}/ws`, clientId: `tietiezhi-fork-${crypto.randomUUID()}`,
+    url: connection.url, clientId: `tietiezhi-fork-${crypto.randomUUID()}`,
     clientType: "cli", connectTimeoutMs: 5_000, reconnect: { enabled: false },
-    localCredential: () => readFileSync(join(status.home, "local-credential"), "utf8").trim(),
+    localCredential: () => readFileSync(join(connection.home, "local-credential"), "utf8").trim(),
   });
   try {
     await daemon.connect();
