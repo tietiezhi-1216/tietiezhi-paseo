@@ -219,7 +219,7 @@ function App() {
         return { agentId: "forked-agent", workspaceId: input.target === "tab" ? "original-workspace" : "forked-workspace", serverId: input.serverId };
       }
       if (name === "slotgame.performance.agent_turns") {
-        return { records: [{ model: "pi/model-test", provider: "pi", content: "正文第一段\n\n**正文第二段**", messageId: "preview-reply", recordId: "preview-record", inputTokens: 2000, outputTokens: 1500, cachedTokens: 3000, durationMs: 12000, tps: 125, timestamp: 1000, steps: 3 }] };
+        return { records: [{ model: "pi/model-test", provider: "pi", content: "正文第一段\n\n**正文第二段**", messageId: "preview-reply", recordId: "preview-record", inputTokens: 2000, outputTokens: 1500, cachedTokens: 3000, durationMs: 12000, tps: 125, modelDurationMs: 6000, modelTps: 250, ttftMs: 1200, timestamp: 1000, steps: 3 }, { model: "pi/legacy-model", provider: "pi", content: "旧记录", messageId: "legacy-reply", inputTokens: 2000, outputTokens: 1500, cachedTokens: 0, durationMs: 12000, tps: 125, timestamp: 1000 }] };
       }
       if (name === "slotgame.performance.overview") {
         return { models: [], overallAvgTps: 0, totalTurns: 0, totalInputTokens: 0, totalOutputTokens: 0 };

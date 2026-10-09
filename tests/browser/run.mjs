@@ -264,7 +264,21 @@ try {
   assert.equal(await page.getByTestId("tietiezhi-reply-footer").count(), 0);
   await page.evaluate(() => globalThis.__preview.showReply({ text: "正文第一段\n\n**正文第二段**", messageId: "preview-reply", phase: "complete" }));
   await reply.getByText("正文第二段", { exact: true }).waitFor();
-  await reply.getByText("工作了 12s", { exact: true }).waitFor();
+  await reply.getByText("· 12s", { exact: true }).waitFor();
+  await reply.getByTestId("reply-tps").getByText("250 tps", { exact: true }).waitFor();
+  assert.match(await reply.getByTestId("reply-tps").getAttribute("aria-label"), /includes first-token wait/);
+  await reply.getByText("· ttft 1.2s", { exact: true }).waitFor();
+  for (const label of ["· input 2.0k", "· output 1.5k", "· cache 3.0k", "· hit 60.0%"]) await reply.getByText(label, { exact: true }).waitFor();
+  assert.doesNotMatch(await reply.getByTestId("tietiezhi-reply-footer").innerText(), /步|⚡|125/);
+  assert.equal(await reply.getByTestId("reply-tps").evaluate(el => getComputedStyle(el).fontWeight), "400");
+  const metricRows = await reply.getByTestId("tietiezhi-reply-footer").evaluate(el => {
+    const nodes = [...el.querySelectorAll('[dir="auto"]')];
+    return nodes.map(n => ({ y: n.getBoundingClientRect().y, height: n.getBoundingClientRect().height, size: getComputedStyle(n).fontSize }));
+  });
+  assert.ok(metricRows.length >= 8);
+  assert.ok(metricRows.every(n => Math.abs(n.y - metricRows[0].y) < 2 && n.height <= 17 && n.size === "11px"), "metrics remain single-line, uniformly sized on mobile");
+  assert.doesNotMatch(await reply.getByTestId("tietiezhi-reply-footer").innerText(), /\btime\b|TPS|出|入|缓/);
+  await reply.screenshot({ path: join(root, ".artifacts/ui/reply-tps-mobile-light.png") });
   assert.equal(await page.getByTestId("tietiezhi-reply-footer").count(), 1);
   await reply.getByRole("button", { name: "复制回复", exact: true }).click();
   assert.equal(await page.evaluate(() => globalThis.__preview.calls.filter(c => c.kind === "copy").at(-1).text), "正文第一段\n\n**正文第二段**");
@@ -286,6 +300,12 @@ try {
     assert.equal(navigationCall.serverId, forkCall.input.serverId);
   }
   await page.screenshot({ path: join(root, ".artifacts/ui/unified-assistant-reply.png") });
+  await page.evaluate(() => globalThis.__preview.showReply({ text: "旧记录", messageId: "legacy-reply", phase: "complete" }));
+  await reply.getByTestId("reply-tps").getByText("125 turn tps", { exact: true }).waitFor();
+  assert.match(await reply.getByTestId("reply-tps").getAttribute("aria-label"), /response timing unavailable/);
+  await reply.getByTestId("reply-ttft").getByText("· ttft —", { exact: true }).waitFor();
+  await reply.getByText("· cache 0", { exact: true }).waitFor();
+  await reply.getByText("· hit 0.0%", { exact: true }).waitFor();
   await page.evaluate(() => globalThis.__preview.showReply({ text: "中间过程说明", phase: "complete" }));
   await reply.getByText("中间过程说明", { exact: true }).waitFor();
   assert.equal(await reply.getByRole("button", { name: "复制回复" }).count(), 0);

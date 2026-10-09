@@ -17,8 +17,12 @@
     "index.server.tsx",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "pi-extensions/"
   ],
+  "pi": {
+    "extensions": ["./pi-extensions/turn-timing/index.ts"]
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",

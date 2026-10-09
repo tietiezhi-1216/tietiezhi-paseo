@@ -136,6 +136,14 @@ Relay 为端到端加密，不需要公网开放 daemon 端口。桌面也可使
 
 不要在 Pi 正在续期时手动覆盖授权文件。需要回滚时先确保没有授权写入者，再在目标主机检查私有备份并恢复，保留 `0600` 权限。备份不是凭据刷新服务，已失效的 Refresh Token 不能靠回滚复活。
 
+## 首 token 时间采集
+
+- Pi 扩展源码在 [`pi-extensions/turn-timing/`](pi-extensions/turn-timing/README.md)，与 Paseo 插件同仓库，不复制到全局扩展目录。
+- 本机全局安装：`pi install /absolute/path/to/tietiezhi`。仓库的 `pi.extensions` 只声明采集扩展；Pi 全局配置引用本地源码，不复制文件，各项目都能加载，不依赖各项目的信任设置。远端主机需独立安装。
+- 新 Pi 会话加载后开始采集；已运行的 Pi 会话需在空闲时重载资源。`paseo plugin reload` 只重载展示/读取端，不重载 Pi，不要因此重启 daemon 或中断正在执行的任务。
+- 用单调时钟记录 provider request 到首个非空正文/思考/工具参数增量的耗时；仅保存计时及响应标识，不保存 prompt、输出或凭据，也不进入模型上下文。
+- 页脚只匹配整轮第一次模型响应的数据，不取后续调用均值。旧记录、缺失采集、错误/中断或重复/不匹配元数据仍显示 `ttft —`。自定义 provider 没有转发请求 hook 时无法采集，不用总耗时代替。
+
 ## 开发与验证
 
 - `npm run typecheck`：针对已固定的新版 SDK 检查。

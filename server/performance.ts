@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 import type { PluginHookContext, PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import type { ModelPerformanceStats, PerformanceOverview, TurnPerformanceData } from "../shared/performance.ts";
 
+import { RESPONSE_TIMING_ENTRY, isResponseTiming, matchResponseTiming, type ResponseIdentity, type ResponseTiming } from "../shared/response-timing.ts";
+
 interface RawTurnRecord extends TurnPerformanceData {
   id: string;
   agentId: string;
@@ -15,7 +17,7 @@ const STORE_PATH = join(homedir(), ".paseo", "tietiezhi", "model-performance.jso
 function extractTurnUsageFromNativeHandle(
   nativeHandle?: string | null,
   turnStartTime?: number,
-): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string; durationMs: number } | null {
+): { input: number; output: number; cached: number; reasoning: number; steps: number; content: string; durationMs: number; modelDurationMs?: number; ttftMs?: number } | null {
   if (!nativeHandle || !existsSync(nativeHandle)) return null;
   try {
     const rawContent = readFileSync(nativeHandle, "utf8");
@@ -47,14 +49,35 @@ function extractTurnUsageFromNativeHandle(
     let steps = 0;
     let lastAssistantText = "";
     let lastAssistantTime = 0;
+    let modelDurationMs = 0;
+    let completeResponseTiming = true;
+    let firstAssistant: ResponseIdentity | undefined;
+    let firstAssistantFailed = false;
+    const responseTimings: ResponseTiming[] = [];
 
     for (let i = sliceFrom; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
       try {
         const entry = JSON.parse(line);
+        if (entry.type === "custom" && entry.customType === RESPONSE_TIMING_ENTRY && isResponseTiming(entry.data)) {
+          responseTimings.push(entry.data);
+        }
         if (entry.type === "message" && entry.message?.role === "assistant") {
           steps++;
+          if (steps === 1) {
+            const m = entry.message;
+            firstAssistant = { timestamp: m.timestamp, provider: m.provider, api: m.api, model: m.model, responseId: m.responseId };
+            firstAssistantFailed = m.stopReason === "error" || m.stopReason === "aborted";
+          }
+          // Native Pi response timing is persisted on the assistant message, not
+          // usage. Never divide whole-turn tokens by a partially timed subset.
+          const responseMs = entry.message.durationMs;
+          if (typeof responseMs === "number" && Number.isFinite(responseMs) && responseMs > 0) {
+            modelDurationMs += responseMs;
+          } else {
+            completeResponseTiming = false;
+          }
           const u = entry.message.usage;
           if (u) {
             input += (u.input || 0);
@@ -84,7 +107,10 @@ function extractTurnUsageFromNativeHandle(
       const finishTime = lastAssistantTime || Date.now();
       const startTime = userTimestamp || (turnStartTime && turnStartTime > 0 ? turnStartTime : finishTime - 5_000);
       const durationMs = Math.max(500, finishTime - startTime);
-      return { input, output, cached, reasoning, steps, content: lastAssistantText, durationMs };
+      return { input, output, cached, reasoning, steps, content: lastAssistantText, durationMs,
+        modelDurationMs: completeResponseTiming && modelDurationMs > 0 ? modelDurationMs : undefined,
+        ttftMs: lastUserIndex >= 0 && firstAssistant && !firstAssistantFailed
+          ? matchResponseTiming(responseTimings, firstAssistant)?.ttftMs : undefined };
     }
   } catch {}
   return null;
@@ -155,6 +181,8 @@ export class PerformanceService {
     let deltaReasoning = 0;
     let turnSteps = 1;
     let assistantContent = "";
+    let modelDurationMs: number | undefined;
+    let ttftMs: number | undefined;
 
     try {
       const agentHandle = context.paseo.agents.ref(event.agent.id);
@@ -180,6 +208,8 @@ export class PerformanceService {
         turnSteps = nativeUsage.steps;
         assistantContent = nativeUsage.content;
         durationMs = nativeUsage.durationMs;
+        modelDurationMs = nativeUsage.modelDurationMs;
+        ttftMs = nativeUsage.ttftMs;
       } else {
         // Method 2: Fallback to cumulative delta with baseline guard
         const current = snapshot?.agent?.lastUsage;
@@ -229,6 +259,9 @@ export class PerformanceService {
       reasoningTokens: deltaReasoning || undefined,
       durationMs,
       tps,
+      modelDurationMs,
+      ttftMs,
+      modelTps: modelDurationMs ? Number((deltaOutput / (modelDurationMs / 1000)).toFixed(1)) : undefined,
       timestamp: Date.now(),
       steps: turnSteps,
       content: finalReply?.type === "assistant_message" ? finalReply.text : assistantContent || undefined,

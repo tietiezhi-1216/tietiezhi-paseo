@@ -9,7 +9,13 @@ export const TurnPerformanceSchema = z.object({
   cachedTokens: z.number(),
   reasoningTokens: z.number().optional(),
   durationMs: z.number(),
+  /** End-to-end turn throughput, including tools/waits (legacy-compatible). */
   tps: z.number(),
+  /** Sum of native response durations; includes TTFT, excludes inter-response tools. */
+  modelDurationMs: z.number().finite().positive().optional(),
+  modelTps: z.number().finite().nonnegative().optional(),
+  /** Measured request-to-first-token latency only. Absent when not captured. */
+  ttftMs: z.number().finite().nonnegative().optional(),
   timestamp: z.number(),
   steps: z.number().optional(),
   content: z.string().optional(),
@@ -49,6 +55,23 @@ export function formatTokens(count: number): string {
     return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
   }
   return `${count}`;
+}
+
+/** Compact duration; precise seconds are useful for measured TTFT. */
+export function formatPerformanceDuration(ms: number | undefined, precise = false): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
+  if (precise && ms < 60_000) return `${Number((ms / 1000).toFixed(2))}s`;
+  const totalSeconds = Math.round(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours ? `${hours}h` : "", minutes ? `${minutes}m` : "", seconds || !totalSeconds ? `${seconds}s` : ""].filter(Boolean).join(" ");
+}
+
+/** Pi input excludes cache reads. Use raw counts, never rounded display values. */
+export function formatCacheHit(input: number, cached: number): string {
+  if (!Number.isFinite(input) || !Number.isFinite(cached) || input < 0 || cached < 0 || input + cached <= 0) return "—";
+  return `${(100 * cached / (input + cached)).toFixed(1)}%`;
 }
 
 export const ModelPerformanceStatsSchema = z.object({
