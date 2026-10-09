@@ -7,8 +7,10 @@ import { AccountsPanel } from "./client/accounts.tsx";
 import { QuotaFooter } from "./client/quota-footer.tsx";
 import { ManagerEntry, ManagerScreen } from "./client/manager.tsx";
 import { contributeAgentsPills } from "./client/agents-pill.tsx";
-import { TurnPerformanceBadge } from "./client/performance.tsx";
-import { TurnPerformanceSchema } from "./shared/performance.ts";
+import { AssistantReply } from "./client/assistant-reply.tsx";
+import { AssistantReplySchema, TurnPerformanceSchema } from "./shared/performance.ts";
+import { CompactTool, CompactReasoning } from "./client/activity.tsx";
+import { CompactToolSchema, CompactReasoningSchema } from "./shared/activity.ts";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
@@ -66,11 +68,40 @@ export default function contribute(client: PluginClientContext) {
         </View>
       ),
     }),
+    // Leave tool calls native: replacing them with plugin rows bypasses the
+    // host's Overview grouping. The user selects Overview in Paseo settings.
+    // Keep the individual renderer for compatibility with existing plugin rows.
+    client.addTimelineRenderer({ kind: "compact-tool", version: 1, schema: CompactToolSchema, Component: CompactTool }),
+    client.addTimelineTransformer({
+      id: "compact-reasoning", query: { itemType: "reasoning" },
+      transform({ item, phase }) {
+        return { items: [{ type: "plugin", kind: "compact-reasoning", version: 1, data: { text: item.text, phase } }] };
+      },
+    }),
+    client.addTimelineRenderer({ kind: "compact-reasoning", version: 1, schema: CompactReasoningSchema, Component: CompactReasoning }),
+    client.addTimelineTransformer({
+      id: "unified-assistant-reply",
+      query: { itemType: "assistant_message" },
+      transform({ item, phase }) {
+        if (!item.text.trim()) return undefined;
+        // Unsupported rich content stays host-rendered, including its native controls.
+        if (/```mermaid|!\[[^\]]*\]\(/.test(item.text)) return undefined;
+        return { items: [{
+          type: "plugin", kind: "assistant-reply", version: 1,
+          data: { text: item.text, phase, ...(item.messageId ? { messageId: item.messageId } : {}) },
+        }] };
+      },
+    }),
+    client.addTimelineRenderer({
+      kind: "assistant-reply", version: 1,
+      schema: AssistantReplySchema, Component: AssistantReply,
+    }),
     client.addTimelineRenderer({
       kind: "turn-performance",
       version: 1,
       schema: TurnPerformanceSchema,
-      Component: TurnPerformanceBadge,
+      // Legacy rows are retained in history but no longer draw a second footer.
+      Component: () => null,
     }),
   ];
   const stopPills = contributeAgentsPills(client);

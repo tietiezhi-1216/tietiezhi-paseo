@@ -4,17 +4,9 @@ import { homedir } from "node:os";
 import type { PluginHookContext, PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import type { ModelPerformanceStats, PerformanceOverview, TurnPerformanceData } from "../shared/performance.ts";
 
-interface RawTurnRecord {
+interface RawTurnRecord extends TurnPerformanceData {
   id: string;
   agentId: string;
-  model: string;
-  provider: string;
-  inputTokens: number;
-  outputTokens: number;
-  cachedTokens: number;
-  durationMs: number;
-  tps: number;
-  timestamp: number;
 }
 
 const MAX_STORED_RECORDS = 2_000;
@@ -104,16 +96,19 @@ export class PerformanceService {
   private records: RawTurnRecord[] = [];
   private loaded = false;
 
-  constructor() {
+  private readonly storePath: string;
+
+  constructor(storePath = STORE_PATH) {
+    this.storePath = storePath;
     this.load();
   }
 
   private load() {
     if (this.loaded) return;
     this.loaded = true;
-    if (existsSync(STORE_PATH)) {
+    if (existsSync(this.storePath)) {
       try {
-        const raw = JSON.parse(readFileSync(STORE_PATH, "utf8"));
+        const raw = JSON.parse(readFileSync(this.storePath, "utf8"));
         if (Array.isArray(raw)) {
           this.records = raw.slice(-MAX_STORED_RECORDS);
         }
@@ -125,9 +120,18 @@ export class PerformanceService {
 
   private save() {
     try {
-      mkdirSync(dirname(STORE_PATH), { recursive: true });
-      writeFileSync(STORE_PATH, JSON.stringify(this.records.slice(-MAX_STORED_RECORDS), null, 2), "utf8");
+      mkdirSync(dirname(this.storePath), { recursive: true });
+      writeFileSync(this.storePath, JSON.stringify(this.records.slice(-MAX_STORED_RECORDS), null, 2), "utf8");
     } catch {}
+  }
+
+  getForkRecord(agentId: string, recordId: string) {
+    return this.records.find(record => record.agentId === agentId && record.id === recordId);
+  }
+
+  getAgentTurns(agentId: string) {
+    return { records: this.records.filter((record) => record.agentId === agentId)
+      .map(({ id, agentId: _, ...record }) => ({ ...record, recordId: id })) };
   }
 
   onTurnStarted(event: PluginLifecycleEvents["agent.turn_started"]) {
@@ -215,6 +219,7 @@ export class PerformanceService {
     const durationSec = durationMs / 1000;
     const tps = Number((deltaOutput / durationSec).toFixed(1));
 
+    const finalReply = [...event.timeline].reverse().find((item) => item.type === "assistant_message" && item.text.trim());
     const perfData: TurnPerformanceData = {
       model: modelName,
       provider: providerName,
@@ -226,7 +231,8 @@ export class PerformanceService {
       tps,
       timestamp: Date.now(),
       steps: turnSteps,
-      content: assistantContent || undefined,
+      content: finalReply?.type === "assistant_message" ? finalReply.text : assistantContent || undefined,
+      messageId: finalReply?.type === "assistant_message" ? finalReply.messageId : undefined,
     };
 
     // 1. Record persistently
@@ -237,18 +243,7 @@ export class PerformanceService {
     });
     this.save();
 
-    // 2. Append directly to timeline so UI immediately draws the badge under AI message
-    try {
-      await context.paseo.agents.ref(event.agent.id).timeline.append({
-        type: "plugin",
-        id: `perf-badge-${event.turnId || Date.now()}`,
-        kind: "turn-performance",
-        version: 1,
-        data: perfData,
-      });
-    } catch (err) {
-      console.error("[PERFORMANCE] timeline.append error:", err);
-    }
+    // The reply renderer reads these records by agent; do not append a separate footer row.
 
     return perfData;
   }

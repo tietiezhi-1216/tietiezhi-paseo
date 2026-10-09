@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import contribute from "../../index.client.tsx";
 import { DashboardScreen } from "../../client/dashboard.tsx";
 import { ManagerScreen } from "../../client/manager.tsx";
+import { AssistantReply } from "../../client/assistant-reply.tsx";
+import { CompactTool, CompactReasoning } from "../../client/activity.tsx";
 import { Runtime, setTestRuntime } from "./sdk.jsx";
 
 const dark = {
@@ -50,6 +52,11 @@ let delayQuota = false;
 let releaseQuota;
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const slots = { header: [], footer: [] };
+const timelineRegistrations = { transformers: [], renderers: [] };
+function registerTimeline(kind, contribution) {
+  timelineRegistrations[kind].push(contribution);
+  return () => { timelineRegistrations[kind] = timelineRegistrations[kind].filter(item => item !== contribution); };
+}
 let mountedPills = [];
 let pillRegistrations = 0;
 
@@ -81,7 +88,9 @@ const stopRegistrations = contribute({
   addSidebarHeaderItem: (item) => registerSidebar("header", item),
   addSidebarFooterItem: (item) => registerSidebar("footer", item),
   addScreen: ignore, addSettingsScreen: ignore, addWorkspacePanel: ignore,
-  addCommandCenterItem: ignore, addSlashCommand: ignore, addTimelineRenderer: ignore, addTimelineTransformer: ignore,
+  addCommandCenterItem: ignore, addSlashCommand: ignore,
+  addTimelineRenderer: item => registerTimeline("renderers", item),
+  addTimelineTransformer: item => registerTimeline("transformers", item),
   paseo: {
     agents: {
       subscribe: () => () => {},
@@ -103,6 +112,8 @@ function App() {
   const [quotaResetOffset, setQuotaResetOffset] = useState(3 * 3600000);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [replyPreview, setReplyPreview] = useState(null);
+  const [activityPreview, setActivityPreview] = useState(false);
   const [, setPillTick] = useState(0);
   pillVersionTrigger = () => setPillTick((t) => t + 1);
 
@@ -110,6 +121,9 @@ function App() {
   setTestRuntime(state);
   globalThis.__preview = {
     calls,
+    timelineRegistrations,
+    showReply: setReplyPreview,
+    showActivity: setActivityPreview,
     pillRegistrations: () => pillRegistrations,
     offline: () => setHosts(hosts.map((h) => h.serverId === "remote" ? { ...h, status: "offline" } : h)),
     online: () => setHosts(hosts),
@@ -200,6 +214,13 @@ function App() {
         calls.push({ kind: "agent-unarchive", serverId: hostId, input });
         return { agentId: input.agentId, unarchived: true };
       }
+      if (name === "slotgame.reply.fork") {
+        calls.push({ kind: "fork", input });
+        return { agentId: "forked-agent", workspaceId: input.target === "tab" ? "original-workspace" : "forked-workspace", serverId: input.serverId };
+      }
+      if (name === "slotgame.performance.agent_turns") {
+        return { records: [{ model: "pi/model-test", provider: "pi", content: "正文第一段\n\n**正文第二段**", messageId: "preview-reply", recordId: "preview-record", inputTokens: 2000, outputTokens: 1500, cachedTokens: 3000, durationMs: 12000, tps: 125, timestamp: 1000, steps: 3 }] };
+      }
       if (name === "slotgame.performance.overview") {
         return { models: [], overallAvgTps: 0, totalTurns: 0, totalInputTokens: 0, totalOutputTokens: 0 };
       }
@@ -245,6 +266,11 @@ function App() {
             <button data-testid="combined-model-selector" aria-label={`模型 · ${agentModel}`} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 4, background: theme.colors.surface1, color: theme.colors.foreground, border: `1px solid ${theme.colors.border}` }}>{agentModel}</button>
           </header>
           <div style={{ maxWidth: 1000, margin: "auto", height: "calc(100vh - 56px)" }}>
+            {activityPreview ? <>
+              <CompactTool agentId="preview-agent" host={{ id: hostId }} layout={layout} timestamp={new Date(1000)} theme={theme} item={{ data: { name: "Read", status: "completed", detail: { type: "read", filePath: "src/example.ts", content: "完整工具输出" }, error: null } }} />
+              <CompactReasoning agentId="preview-agent" host={{ id: hostId }} layout={layout} timestamp={new Date(2000)} theme={theme} item={{ data: { text: "**检查代码**\n\n完整思考内容", phase: "complete" } }} />
+            </> : null}
+            {replyPreview ? <AssistantReply onForkNavigate={target => calls.push({ kind: "fork-navigate", ...target })} agentId="preview-agent" theme={theme} host={{ id: hostId }} layout={layout} timestamp={new Date(1000)} item={{ type: "plugin", kind: "assistant-reply", version: 1, data: replyPreview }} /> : null}
             {pluginActive ? (managerOpen ? <ManagerScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }} theme={theme} layout={layout} params={{}} /> : <DashboardScreen host={{ id: hostId, label: currentHosts.find((h) => h.serverId === hostId).label }}
               theme={theme} layout={layout} params={{}}
               navigation={{ openAgent: (target) => calls.push({ kind: "navigate", ...target }) }} />) : null}

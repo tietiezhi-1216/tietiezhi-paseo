@@ -13,8 +13,31 @@ export const TurnPerformanceSchema = z.object({
   timestamp: z.number(),
   steps: z.number().optional(),
   content: z.string().optional(),
+  messageId: z.string().optional(),
+  recordId: z.string().optional(),
 });
 export type TurnPerformanceData = z.infer<typeof TurnPerformanceSchema>;
+
+export const AssistantReplySchema = z.object({
+  text: z.string(),
+  messageId: z.string().optional(),
+  phase: z.enum(["streaming", "complete"]),
+});
+export type AssistantReplyData = z.infer<typeof AssistantReplySchema>;
+
+/** Exact identity first; repeated text without an identity is deliberately ambiguous. */
+export function matchReplyPerformance(records: TurnPerformanceData[], reply: AssistantReplyData) {
+  const matches = records.filter((record) => reply.messageId && record.messageId
+    ? record.messageId === reply.messageId
+    : record.content === reply.text);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+export const getAgentTurnPerformance = defineRpc({
+  name: "slotgame.performance.agent_turns",
+  input: z.object({ agentId: z.string().min(1) }),
+  output: z.object({ records: z.array(TurnPerformanceSchema) }),
+});
 
 export function formatTokens(count: number): string {
   if (count >= 1_000_000) {

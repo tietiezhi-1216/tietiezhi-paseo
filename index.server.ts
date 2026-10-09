@@ -11,7 +11,9 @@ import { handleAgentActivity, reloadRemoteAgent, archiveRemoteAgent, unarchiveRe
 import { handleAgentTurnEnded } from "./server/auto-switch.ts";
 import { agentActivity, agentReload, agentArchive, agentUnarchive } from "./shared/agents.ts";
 import { PerformanceService } from "./server/performance.ts";
-import { getModelPerformance } from "./shared/performance.ts";
+import { getModelPerformance, getAgentTurnPerformance } from "./shared/performance.ts";
+import { forkReply } from "./shared/fork.ts";
+import { createReplyFork } from "./server/fork.ts";
 
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
@@ -45,6 +47,8 @@ export default function contribute(server: PluginServerContext) {
   server.handle(agentArchive, (input, context) => archiveRemoteAgent(input, context.paseo));
   server.handle(agentUnarchive, (input, context) => unarchiveRemoteAgent(input, context.paseo));
   server.handle(getModelPerformance, (input) => performance.getOverview(input?.query));
+  server.handle(getAgentTurnPerformance, ({ agentId }) => performance.getAgentTurns(agentId));
+  server.handle(forkReply, (input, { paseo }) => createReplyFork(input, performance.getForkRecord(input.agentId, input.recordId), paseo));
   server.on("agent.turn_started", (event) => performance.onTurnStarted(event));
   server.on("agent.turn_ended", async (event, context) => {
     void handleAgentTurnEnded(event, context);

@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PerformanceService } from "../server/performance.ts";
 import {
   TurnPerformanceSchema,
   ModelPerformanceStatsSchema,
   PerformanceOverviewSchema,
+  matchReplyPerformance,
 } from "../shared/performance.ts";
 
 test("TurnPerformanceSchema validates valid performance data", () => {
@@ -23,8 +27,10 @@ test("TurnPerformanceSchema validates valid performance data", () => {
   assert.equal(parsed.outputTokens, 640);
 });
 
-test("PerformanceService calculates delta usage and records turn performance", async () => {
-  const service = new PerformanceService();
+test("PerformanceService calculates delta usage and records turn performance", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "tietiezhi-performance-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const service = new PerformanceService(join(dir, "records.json"));
   const agentId = `test-agent-${Date.now()}`;
 
   // 模拟 turn_started
@@ -54,7 +60,7 @@ test("PerformanceService calculates delta usage and records turn performance", a
           }),
           timeline: {
             append: async (item: unknown) => {
-              assert.ok(item);
+              assert.fail("Unified replies must not append a second performance row");
             },
           },
         }),
@@ -74,7 +80,7 @@ test("PerformanceService calculates delta usage and records turn performance", a
       },
       turnId: "turn-1",
       outcome: { kind: "completed" },
-      timeline: [],
+      timeline: [{ type: "assistant_message", text: "Final reply", messageId: "reply-1" }],
     },
     mockContext as any,
   );
@@ -84,6 +90,11 @@ test("PerformanceService calculates delta usage and records turn performance", a
   assert.equal(result.inputTokens, 1000);
   assert.equal(result.model, "gpt-6-astra");
   assert.ok(result.tps > 0);
+  assert.equal(result.content, "Final reply");
+  assert.equal(result.messageId, "reply-1");
+  assert.equal(service.getAgentTurns("another-agent").records.length, 0);
+  assert.equal(service.getAgentTurns(agentId).records.length, 1);
+  assert.equal(new PerformanceService(join(dir, "records.json")).getAgentTurns(agentId).records[0].messageId, "reply-1");
 
   // 聚合总览
   const overview = service.getOverview("gpt-6-astra");
