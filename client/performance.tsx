@@ -1,151 +1,82 @@
 import { useState, useRef, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { useRpc, type PluginSurfaceProps, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getModelPerformance, formatTokens, type TurnPerformanceData, type ModelPerformanceStats, type PerformanceOverview } from "../shared/performance.ts";
 import { hexAlpha } from "./ui.tsx";
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.round(ms / 1000);
-  if (totalSec >= 60) {
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${min}m ${sec}s`;
-  }
-  return `${Math.max(0.1, ms / 1000).toFixed(1)}s`;
-}
 
 function cleanModelLabel(model: string): string {
   const parts = model.split("/");
   return parts[parts.length - 1] || model;
 }
 
-function CopyIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: string }) {
-  if (typeof document === "undefined") return null;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-function ForkIcon({ size = 13, color = "#8b949e" }: { size?: number; color?: string }) {
-  if (typeof document === "undefined") return null;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <path d="M16 3h5v5" />
-      <path d="M8 3H3v5" />
-      <path d="M12 21v-8" />
-      <path d="M21 3l-7.5 7.5" />
-      <path d="M3 3l7.5 7.5" />
-    </svg>
-  );
-}
-
-const HIDE_NATIVE_FOOTER_STYLE = `
-[data-tietiezhi-native-footer="true"],
-[data-tietiezhi-perf-item="true"] + div {
-  position: absolute !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  height: 0px !important;
-  min-height: 0px !important;
-  margin: 0px !important;
-  padding: 0px !important;
-  overflow: hidden !important;
-}
-`;
-
-function injectNativeFooterHideStyle() {
-  if (typeof document === "undefined") return;
-  const id = "tietiezhi-hide-native-footer";
-  let style = document.getElementById(id) as HTMLStyleElement | null;
-  if (!style) {
-    style = document.createElement("style");
-    style.id = id;
-    document.head?.appendChild(style);
-  }
-  style.textContent = HIDE_NATIVE_FOOTER_STYLE;
-}
-
-if (typeof document !== "undefined") {
-  injectNativeFooterHideStyle();
-}
-
-/** 1. 彻底由我们接管并重做整行 UI：复制按钮、分叉按钮、耗时、TPS 与 Token 一体化同一行，无缝替换原生旧行 */
+/**
+ * 1. 会话单轮性能徽章：
+ * 安全融入原生操作栏同一行（紧随在 ⧉ 复制、⤢ 工作树分叉、工作时间 右侧展示）
+ * 消除多余空行，保证原生分叉菜单与复制功能 100% 健全可用！
+ */
 export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<TurnPerformanceData>) {
   const data = item?.data;
   const badgeRef = useRef<any>(null);
-  const nativeForkRef = useRef<HTMLElement | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    injectNativeFooterHideStyle();
     if (typeof document === "undefined") return;
     const el = badgeRef.current as HTMLElement | null;
     if (!el) return;
 
-    const bindNativeFooter = () => {
-      let curr = el;
-      while (curr && curr.parentElement && curr.parentElement !== document.body) {
-        const parent = curr.parentElement;
-        if (curr.nextElementSibling && parent.children.length > 1) {
-          const next = curr.nextElementSibling as HTMLElement | null;
-          if (next) {
-            const buttons = next.querySelectorAll<HTMLElement>("button");
-            const hasButtonsOrTime = buttons.length > 0 || next.innerText?.includes("工作了");
-            if (hasButtonsOrTime) {
-              curr.setAttribute("data-tietiezhi-perf-item", "true");
-              next.setAttribute("data-tietiezhi-native-footer", "true");
-              if (buttons.length >= 2) {
-                nativeForkRef.current = buttons[1];
-              } else if (buttons.length === 1) {
-                nativeForkRef.current = buttons[0];
-              }
-              return true;
-            }
-          }
+    let attached = false;
+
+    const attachToNativeFooter = () => {
+      // 向上寻找当前 item 所在的行容器
+      let row = el.parentElement;
+      while (row && row.parentElement && !row.parentElement.hasAttribute?.("data-stream-view") && row.parentElement !== document.body) {
+        if (row.nextElementSibling) break;
+        row = row.parentElement;
+      }
+      if (!row) return false;
+
+      // 寻找紧邻的下一个原生 footer 行
+      let next = row.nextElementSibling as HTMLElement | null;
+      let targetSlot: HTMLElement | null = null;
+
+      for (let i = 0; i < 4 && next; i++) {
+        // 原生 footer 是一个带有复制/分叉按钮或“工作了”的水平 flex 容器
+        const slot = next.querySelector<HTMLElement>("[data-testid='turn-working-indicator'], [data-testid*='turn']")
+          || next.querySelector<HTMLElement>("button")?.parentElement
+          || (next.innerText?.includes("工作了") ? next : null);
+
+        if (slot) {
+          targetSlot = slot;
+          break;
         }
-        curr = curr.parentElement;
+        next = next.nextElementSibling as HTMLElement | null;
+      }
+
+      if (targetSlot && el.parentElement !== targetSlot) {
+        // 确保原生 footer 为水平 flex 排布
+        targetSlot.style.setProperty("display", "flex", "important");
+        targetSlot.style.setProperty("flex-direction", "row", "important");
+        targetSlot.style.setProperty("align-items", "center", "important");
+        targetSlot.style.setProperty("flex-wrap", "wrap", "important");
+
+        // 将当前徽章追加进原生 footer 容器的最右侧！
+        targetSlot.appendChild(el);
+
+        // 将原本上一行的空白占位容器彻底塌缩，消除多余空行！
+        row.style.setProperty("display", "none", "important");
+        el.style.opacity = "1";
+        attached = true;
+        return true;
       }
       return false;
     };
 
-    bindNativeFooter();
-    const timers = [50, 150, 400, 1000].map((ms) => setTimeout(bindNativeFooter, ms));
+    attachToNativeFooter();
+    const timers = [50, 150, 400, 1000].map((ms) => setTimeout(attachToNativeFooter, ms));
     return () => { for (const t of timers) clearTimeout(t); };
   }, []);
 
   if (!data || data.outputTokens <= 0) return null;
-
-  const handleCopy = () => {
-    let textToCopy = data.content || "";
-    if (!textToCopy && typeof document !== "undefined" && badgeRef.current) {
-      let prev = badgeRef.current.closest?.("[data-tietiezhi-perf-item='true']")?.previousElementSibling as HTMLElement | null;
-      if (prev) textToCopy = prev.innerText || "";
-    }
-    if (textToCopy) {
-      void copyText(textToCopy).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }).catch(() => {});
-    }
-  };
-
-  const handleFork = () => {
-    let forkBtn = nativeForkRef.current;
-    if (!forkBtn && typeof document !== "undefined") {
-      const next = document.querySelector("[data-tietiezhi-native-footer='true']");
-      const btns = next?.querySelectorAll<HTMLElement>("button");
-      if (btns && btns.length >= 2) forkBtn = btns[1];
-    }
-    if (forkBtn) {
-      forkBtn.style.pointerEvents = "auto";
-      forkBtn.click();
-    }
-  };
 
   const tpsColor = data.tps >= 50
     ? theme.colors.statusSuccess
@@ -153,7 +84,6 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
       ? theme.colors.statusWarning
       : theme.colors.foregroundMuted;
 
-  const durationStr = formatDuration(data.durationMs);
   const cacheStr = data.cachedTokens >= 1_000
     ? ` (+${formatTokens(data.cachedTokens)}缓)`
     : "";
@@ -162,61 +92,30 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
     <View
       ref={badgeRef}
       style={{
-        width: "100%",
         flexDirection: "row",
         alignItems: "center",
-        flexWrap: "wrap",
-        gap: 8,
-        paddingTop: 6,
-        paddingBottom: 4,
-        marginTop: 0,
+        flexWrap: "nowrap",
+        gap: 5,
+        marginLeft: 6,
+        paddingVertical: 1,
+        opacity: 0.95,
       }}
     >
-      {/* 1. 复制按钮 */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="复制消息内容"
-        hitSlop={8}
-        onPress={handleCopy}
-        style={{ flexDirection: "row", alignItems: "center", gap: 3, cursor: "pointer" } as any}
-      >
-        <CopyIcon size={13} color={copied ? theme.colors.statusSuccess : theme.colors.foregroundMuted} />
-        {copied ? (
-          <Text style={{ color: theme.colors.statusSuccess, fontSize: 11, fontWeight: "600" }}>已复制</Text>
-        ) : null}
-      </Pressable>
-
-      {/* 2. 工作树分叉按钮 (完整触发 Paseo 原生分叉菜单) */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="分叉工作树"
-        hitSlop={8}
-        onPress={handleFork}
-        style={{ flexDirection: "row", alignItems: "center", cursor: "pointer" } as any}
-      >
-        <ForkIcon size={13} color={theme.colors.foregroundMuted} />
-      </Pressable>
-
-      {/* 3. 单轮真实耗时 */}
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
-        {durationStr}
-      </Text>
-
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
-      {/* 4. ⚡ 整轮真实 TPS 速度 */}
+      {/* ⚡ 整轮真实平均 TPS */}
       <Text style={{ color: tpsColor, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         ⚡ {data.tps} tps
       </Text>
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
-      {/* 5. 整轮完整 Token 统计 (过千强制 k) */}
+      {/* 整轮完整 Token 消耗 (过千强制使用 k) */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"] }}>
         {formatTokens(data.outputTokens)} 出 / {formatTokens(data.inputTokens)} 入{cacheStr}
       </Text>
 
-      {/* 6. 多步骤执行提示 */}
+      {/* 多步骤执行提示 */}
       {data.steps && data.steps > 1 ? (
         <>
           <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
@@ -228,7 +127,7 @@ export function TurnPerformanceBadge({ item, theme }: PluginTimelineItemProps<Tu
 
       <Text style={{ color: theme.colors.border, fontSize: 10 }}>·</Text>
 
-      {/* 7. 模型名称 */}
+      {/* 当前模型 */}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "500" }}>
         {cleanModelLabel(data.model)}
       </Text>
