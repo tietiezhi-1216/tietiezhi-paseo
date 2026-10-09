@@ -2,7 +2,7 @@
 
 参考 `yaukwan/pi-extensions` 的 `pi-paseo-subagent` 架构：由 Paseo 创建真实子 Agent，而不是把独立 Pi 子进程伪装成 Agent。
 
-本实现通过 Paseo CLI 的本机 home 解析器连接，保留 `PASEO_AGENT_ID` 作为父会话上下文。创建时检查父 Agent，并在返回后校验子 Agent 的 `ParentAgentId`。不依赖把 Daemon 密码写入 Pi 配置，不使用远程 `--host` 回退。
+本实现通过 Paseo CLI 的本机 home 解析器连接，保留 `PASEO_AGENT_ID` 作为父会话上下文。创建时检查父 Agent，读取它的准确工作区并显式传入 `--workspace`，返回后校验子 Agent 的父子关系和工作区。无法确定父工作区时中止，不按 cwd 猜测或新建工作区。不依赖把 Daemon 密码写入 Pi 配置，不使用远程 `--host` 回退。
 
 ## 安装与使用
 
@@ -27,6 +27,6 @@ pi install git:github.com/tietiezhi-1216/tietiezhi-paseo
 
 ## 胶囊
 
-Paseo 输入框旁的子代理胶囊从已认证的 SDK Agent 目录读取 `paseo.parent-agent-id`。没有原生子 Agent 时隐藏。列表只显示名称、实时状态和打开箭头；点击走原生 Agent 导航，进入真实会话流，不再在弹窗展开原始工作流输出。
+Paseo 输入框旁的子代理胶囊从已认证的 SDK Agent 目录读取 `paseo.parent-agent-id`。没有原生子 Agent 时隐藏。列表只显示名称、实时状态和打开箭头；点击走原生 Agent 导航，进入同一个父工作区内的真实会话流，不再在弹窗展开原始工作流输出。列表末尾的归档按钮只调用子 Agent 的归档 API，不归档工作区、不删除 worktree 或未提交代码。
 
 原有 `pi-subagents` 独立进程仍保留在工具时间线，但不计入原生子代理胶囊；不会自动导入、重启或迁移正在运行的任务。其他设备需要分别更新 Paseo 插件、安装此 Pi 扩展，并重载其 Pi 资源。

@@ -11,6 +11,8 @@ export function useRpc(contract) {
 }
 export function useAgent(id, selector) { const runtime = useContext(Runtime); const agent = { id, workspaceId: "workspace-1", title: "Preview Agent", provider: "pi", model: runtime.agentModel ?? "openai-codex/gpt-5.5", status: "idle" }; return selector ? selector(agent) : agent; }
 export function usePaseo() {
+  const runtime = useContext(Runtime);
+  if (runtime?.paseo) return runtime.paseo;
   return {
     agents: {
       list: async () => ({ entries: [], pageInfo: { hasMore: false, nextCursor: null } }),

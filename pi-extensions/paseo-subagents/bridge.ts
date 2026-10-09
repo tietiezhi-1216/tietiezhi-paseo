@@ -2,11 +2,31 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readdir, readFile, lstat } from "node:fs/promises";
 const execute = promisify(execFile);
 const idValue = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value) ? value : undefined;
 const object = (value: unknown): Record<string, any> => value && typeof value === "object" ? value as Record<string, any> : {};
 const dataOf = (value: unknown) => object(value).data ?? value;
-export function createPaseoBridge(env: NodeJS.ProcessEnv = process.env, run = execute) {
+// Older Paseo CLIs omit workspaceId from `agent inspect --json`. Read only
+// the exact Agent's persisted metadata, never guess a workspace from its cwd.
+export async function readAgentWorkspace(home: string, agentId: string): Promise<string> {
+  if (!idValue(agentId)) throw new Error("无效的 Agent ID");
+  const root = join(home, "agents");
+  const directories = await readdir(root, { withFileTypes: true });
+  const candidates = [join(root, `${agentId}.json`), ...directories.filter(entry => entry.isDirectory() && !entry.isSymbolicLink()).map(entry => join(root, entry.name, `${agentId}.json`))];
+  const workspaces = new Set<string>();
+  for (const path of candidates) {
+    try {
+      const stat = await lstat(path);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2_000_000) continue;
+      const record = JSON.parse(await readFile(path, "utf8"));
+      if (record.id === agentId && idValue(record.workspaceId)) workspaces.add(record.workspaceId);
+    } catch (error: any) { if (error?.code !== "ENOENT") throw new Error("无法安全读取 Agent 工作区元数据"); }
+  }
+  if (workspaces.size !== 1) throw new Error("无法确定父会话的唯一工作区，已中止；不会创建新工作区");
+  return [...workspaces][0];
+}
+export function createPaseoBridge(env: NodeJS.ProcessEnv = process.env, run = execute, workspaceOf = readAgentWorkspace) {
   const parentId = idValue(env.PASEO_AGENT_ID);
   const home = env.PASEO_HOME || join(homedir(), ".paseo");
   const localEnv = { ...env }; delete localEnv.PASEO_HOST; delete localEnv.PASEO_MCP_URL; delete localEnv.PASEO_PASSWORD;
@@ -50,10 +70,12 @@ export function createPaseoBridge(env: NodeJS.ProcessEnv = process.env, run = ex
       try {
       const parent = await inspect(parentId!, signal);
       if ((parent.Id ?? parent.id) !== parentId) throw new Error("当前设备没有此父会话，不允许回退到其他设备");
+      const workspaceId = idValue(parent.WorkspaceId ?? parent.workspaceId) || await workspaceOf(home, parentId!);
+      const parentCwd = typeof (parent.Cwd ?? parent.cwd) === "string" ? parent.Cwd ?? parent.cwd : cwd;
       if ((await list(signal)).filter((child: any) => ["running", "initializing"].includes(String(child.Status ?? child.status))).length >= 8) throw new Error("当前父会话最多同时运行 8 个子代理");
       const provider = input.provider || [parent.Provider ?? parent.provider, parent.Model ?? parent.model].filter(Boolean).join("/");
       if (!provider) throw new Error("无法确定父会话的模型");
-      const args = ["run", "--background", "--provider", provider, "--cwd", cwd, "--title", (input.name || "子代理").slice(0, 80), "--label", "kind=tietiezhi-subagent", "--label", `paseo.parent-agent-id=${parentId}`];
+      const args = ["run", "--background", "--workspace", workspaceId, "--provider", provider, "--cwd", parentCwd, "--title", (input.name || "子代理").slice(0, 80), "--label", "kind=tietiezhi-subagent", "--label", `paseo.parent-agent-id=${parentId}`];
       if (!input.provider && (parent.Thinking ?? parent.thinking)) args.push("--thinking", String(parent.Thinking ?? parent.thinking));
       // Append the prompt after --, keeping CLI options out of user task text.
       const value = object(await cli([...args, "--", input.prompt], signal));
@@ -61,7 +83,12 @@ export function createPaseoBridge(env: NodeJS.ProcessEnv = process.env, run = ex
       const id = idValue(result.agentId ?? result.AgentId ?? result.id ?? result.Id);
       if (!id) throw new Error("Paseo 没有返回子代理 Agent ID");
       await owned(id, signal);
-      return { agentId: id, parentAgentId: parentId, name: input.name || "子代理", status: "submitted" };
+      const createdWorkspace = await workspaceOf(home, id);
+      if (createdWorkspace !== workspaceId) {
+        await cli(["agent", "stop", id], signal);
+        throw new Error(`子代理 ${id} 的工作区与父会话不一致，已停止；未删除工作区或代码`);
+      }
+      return { agentId: id, parentAgentId: parentId, workspaceId, name: input.name || "子代理", status: "submitted" };
       } finally { unlock(); }
     },
     list,

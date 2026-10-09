@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import { Text, View, ScrollView, Pressable, Linking } from "react-native";
-import type { PluginButtonContentProps, PluginButtonIconProps, PluginClientContext, PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { usePaseo, type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { createNativeSubagentDirectory, nativeChildStatus, type NativeChild } from "../shared/native-subagents.ts";
 import { prepareAgentNavigation } from "../shared/agents.ts";
@@ -10,6 +10,19 @@ type Directory = ReturnType<typeof createNativeSubagentDirectory>;
 export function SubagentsPopover(props: PluginButtonContentProps & { directory: Directory; parentId: string }) {
   const children = useSyncExternalStore(props.directory.subscribe, () => props.directory.snapshot(props.parentId), () => props.directory.snapshot(props.parentId));
   const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const paseo = usePaseo();
+  const archive = async (child: NativeChild) => {
+    if (archiving || !props.directory.snapshot(props.parentId).some(row => row.id === child.id)) return;
+    setArchiving(child.id); setError(null);
+    try {
+      // Agent-only lifecycle operation through the selected Host's authenticated SDK.
+      // Never call workspace.archive or force-delete worktrees/files.
+      await paseo.agents.ref(child.id).archive();
+      props.directory.remove(child.id);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "归档子代理失败"); }
+    finally { setArchiving(null); }
+  };
   const open = (child: NativeChild) => {
     try {
       prepareAgentNavigation({ id: child.id, serverId: props.host.id, workspaceId: child.workspaceId }, {
@@ -26,12 +39,17 @@ export function SubagentsPopover(props: PluginButtonContentProps & { directory: 
     {children.map(child => {
       const status = nativeChildStatus(child);
       const color = status === "失败" ? props.theme.colors.statusDanger : status === "执行中" || status === "等待授权" ? props.theme.colors.statusWarning : props.theme.colors.foregroundMuted;
-      return <Pressable key={child.id} testID="native-subagent-row" accessibilityRole="button" accessibilityLabel={`打开子代理 ${child.title}`} onPress={() => open(child)} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8, paddingVertical: 10 }}>
-        <Text style={{ color, fontSize: 10 }}>●</Text>
-        <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: props.theme.colors.foreground, fontSize: 12 }}>{child.title}</Text>
-        <Text style={{ color, fontSize: 11 }}>{status}</Text>
-        <Icon name="ChevronRight" size={12} color={props.theme.colors.foregroundMuted} />
-      </Pressable>;
+      return <View key={child.id} testID="native-subagent-row" style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`打开子代理 ${child.title}`} onPress={() => open(child)} style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8, paddingVertical: 10 }}>
+          <Text style={{ color, fontSize: 10 }}>●</Text>
+          <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: props.theme.colors.foreground, fontSize: 12 }}>{child.title}</Text>
+          <Text style={{ color, fontSize: 11 }}>{status}</Text>
+          <Icon name="ChevronRight" size={12} color={props.theme.colors.foregroundMuted} />
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`归档子代理 ${child.title}`} disabled={Boolean(archiving)} onPress={() => { void archive(child); }} style={{ padding: 8 }}>
+          <Icon name="Archive" size={13} color={props.theme.colors.foregroundMuted} />
+        </Pressable>
+      </View>;
     })}
   </View>;
   return props.layout.compact || props.layout.platform !== "web" ? content : <ScrollView style={{ maxHeight: 360, minWidth: 280, maxWidth: 360 }}>{content}</ScrollView>;

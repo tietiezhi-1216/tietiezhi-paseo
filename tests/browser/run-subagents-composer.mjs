@@ -33,6 +33,9 @@ try {
   await trigger.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => globalThis.__composer.stats().subscriptions), 1, "hidden capsule still discovers the next child");
   await page.evaluate(() => globalThis.__composer.emit("running")); await trigger.waitFor();
+  await trigger.click(); await page.getByRole("button", { name: "归档子代理 审查登录", exact: true }).click();
+  await trigger.waitFor({ state: "hidden" });
+  assert.deepEqual(await page.evaluate(() => globalThis.__composer.stats().archived), ["child"], "archive must target only the child Agent, never its workspace");
   await page.evaluate(() => globalThis.__composer.stop()); await trigger.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => globalThis.__composer.stats().subscriptions), 0);
   assert.deepEqual(errors, []); console.log("Subagent composer passed: registration, live counts/status, native child conversation navigation, no raw logs, shared subscription, mobile width and teardown (mock host).");

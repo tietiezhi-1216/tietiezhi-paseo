@@ -1,8 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createNativeSubagentDirectory, nativeChildStatus } from "../shared/native-subagents.ts";
-import { createPaseoBridge } from "../pi-extensions/paseo-subagents/bridge.ts";
+import { createPaseoBridge, readAgentWorkspace } from "../pi-extensions/paseo-subagents/bridge.ts";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 const child = { id: "child", workspaceId: "workspace", title: "review", status: "running", labels: { "paseo.parent-agent-id": "parent" } };
+test("workspace lookup reads the exact parent Agent, not another workspace with same cwd", async () => {
+  const home = await mkdtemp(join(tmpdir(), "native-parent-workspace-"));
+  try {
+    await mkdir(join(home, "agents", "project"), { recursive: true });
+    await writeFile(join(home, "agents", "project", "parent.json"), JSON.stringify({ id: "parent", workspaceId: "original-workspace", cwd: "/same-project" }));
+    await writeFile(join(home, "agents", "project", "peer.json"), JSON.stringify({ id: "peer", workspaceId: "peer-workspace", cwd: "/same-project" }));
+    assert.equal(await readAgentWorkspace(home, "parent"), "original-workspace");
+    await assert.rejects(readAgentWorkspace(home, "missing"), /不会创建新工作区/);
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+test("unknown parent workspace stops before CLI can create a new workspace", async () => {
+  let runCalls = 0;
+  const bridge = createPaseoBridge({ PASEO_AGENT_ID: "parent" }, (async (_file: string, args: string[]) => {
+    if (args[0] === "run") runCalls++;
+    return { stdout: '{"Id":"parent","Provider":"pi","Model":"model"}' };
+  }) as any, async () => { throw new Error("missing-workspace"); });
+  await assert.rejects(bridge.run({ prompt: "task" }, "/project"), /missing-workspace/);
+  assert.equal(runCalls, 0);
+});
 test("native child counts follow labels, rename, completion and archive", () => {
   const d = createNativeSubagentDirectory(); d.upsert(child);
   assert.equal(d.snapshot("parent").length, 1); assert.equal(d.snapshot("peer").length, 0);
@@ -24,14 +46,28 @@ test("CLI bridge creates native child with parent linkage and safely separated p
       : { Id: "child", ParentAgentId: "parent" };
     return { stdout: JSON.stringify(data), stderr: "" };
   };
-  const bridge = createPaseoBridge({ PASEO_AGENT_ID: "parent", PASEO_HOME: "/selected/home", PASEO_PASSWORD: "stale", PASEO_HOST: "other-device" }, run);
+  const bridge = createPaseoBridge({ PASEO_AGENT_ID: "parent", PASEO_HOME: "/selected/home", PASEO_PASSWORD: "stale", PASEO_HOST: "other-device" }, run, async () => "parent-workspace");
   const result = await bridge.run({ prompt: "--host other-device", name: "review" }, "/project");
   assert.equal(result.agentId, "child");
+  assert.equal(result.workspaceId, "parent-workspace");
   const command = calls.find(call => call.args[0] === "run")!;
+  assert.equal(command.args[command.args.indexOf("--workspace") + 1], "parent-workspace");
+  assert.equal(command.args.includes("--new-workspace"), false);
   assert.ok(command.args.includes("paseo.parent-agent-id=parent")); assert.ok(command.args.includes("pi/xai/grok-4.7"));
   assert.equal(command.args.at(-1), "--host other-device"); assert.equal(command.args.at(-2), "--");
   assert.equal(command.env.PASEO_HOST, undefined); assert.equal(command.env.PASEO_PASSWORD, undefined);
   assert.equal(command.args[command.args.indexOf("--home") + 1], "/selected/home");
+});
+test("mismatched child workspace is stopped without deleting workspace or files", async () => {
+  const commands: string[][] = [];
+  const bridge = createPaseoBridge({ PASEO_AGENT_ID: "parent" }, (async (_file: string, args: string[]) => {
+    commands.push(args);
+    const data = args[0] === "run" ? { agentId: "child" } : args[1] === "ls" ? [] : args[1] === "stop" ? {} : args[2] === "parent" ? { Id: "parent", Provider: "pi", Model: "model" } : { Id: "child", ParentAgentId: "parent" };
+    return { stdout: JSON.stringify(data) };
+  }) as any, async (_home, id) => id === "parent" ? "parent-workspace" : "wrong-workspace");
+  await assert.rejects(bridge.run({ prompt: "task" }, "/project"), /已停止；未删除工作区或代码/);
+  assert.ok(commands.some(args => args[0] === "agent" && args[1] === "stop" && args[2] === "child"));
+  assert.equal(commands.some(args => args.includes("delete") || args[0] === "workspace"), false);
 });
 test("bridge refuses lifecycle actions on agents not owned by parent", async () => {
   let calls = 0;
