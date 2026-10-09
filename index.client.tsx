@@ -11,6 +11,7 @@ import { AssistantReply } from "./client/assistant-reply.tsx";
 import { AssistantReplySchema, TurnPerformanceSchema } from "./shared/performance.ts";
 import { CompactTool, CompactReasoning } from "./client/activity.tsx";
 import { CompactToolSchema, CompactReasoningSchema } from "./shared/activity.ts";
+import { contributeThinking } from "./client/thinking.tsx";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
@@ -72,12 +73,6 @@ export default function contribute(client: PluginClientContext) {
     // host's Overview grouping. The user selects Overview in Paseo settings.
     // Keep the individual renderer for compatibility with existing plugin rows.
     client.addTimelineRenderer({ kind: "compact-tool", version: 1, schema: CompactToolSchema, Component: CompactTool }),
-    client.addTimelineTransformer({
-      id: "compact-reasoning", query: { itemType: "reasoning" },
-      transform({ item, phase }) {
-        return { items: [{ type: "plugin", kind: "compact-reasoning", version: 1, data: { text: item.text, phase } }] };
-      },
-    }),
     client.addTimelineRenderer({ kind: "compact-reasoning", version: 1, schema: CompactReasoningSchema, Component: CompactReasoning }),
     client.addTimelineTransformer({
       id: "unified-assistant-reply",
@@ -104,8 +99,11 @@ export default function contribute(client: PluginClientContext) {
       Component: () => null,
     }),
   ];
+  // Paseo owns subagent conversations and their native composer entrance.
   const stopPills = contributeAgentsPills(client);
+  const stopThinking = contributeThinking(client);
   return async () => {
+    await stopThinking();
     if (typeof stopPills === "function") await stopPills();
     for (const stop of [...stops].reverse()) await stop();
   };

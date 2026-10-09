@@ -1,0 +1,426 @@
+diff --git a/packages/app/src/agent-stream/presentation.ts b/packages/app/src/agent-stream/presentation.ts
+index 8300996..2442993 100644
+--- a/packages/app/src/agent-stream/presentation.ts
++++ b/packages/app/src/agent-stream/presentation.ts
+@@ -1,6 +1,7 @@
+ import type { AssistantMessageItem, StreamItem, UserMessageItem } from "@/types/stream";
+ import type { TimelineItemTransform } from "@/plugins/timeline/model";
+ import { projectPluginTimelineItems } from "@/plugins/timeline/projection";
++import { createPluginActivityGrouping } from "@/plugins/timeline/activity-groups";
+ import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+ import {
+   prepareToolCallHistory,
+@@ -50,6 +51,7 @@ function isReusableBlock(block: AssistantMessageItem, source: AssistantMessageIt
+ 
+ /** Source messages reach plugins before any Markdown splitting or Overview grouping. */
+ export function createStreamPresentation() {
++  const groupActivities = createPluginActivityGrouping();
+   const userMessageCache = new WeakMap<UserMessageItem, UserMessageItem>();
+ 
+   function presentUserMessage(item: UserMessageItem): UserMessageItem {
+@@ -173,12 +175,14 @@ export function createStreamPresentation() {
+       preparedTail = displayTail;
+       preparedLevel = input.level;
+     }
+-    return projectToolCallDetailLevel({
++    const projected = projectToolCallDetailLevel({
+       level: input.level,
+       tail: displayTail,
+       head,
+       preparedHistory,
+       isTurnActive: input.isTurnActive,
+     });
++    if (!input.transform?.compactActivityGrouping) return projected;
++    return { ...projected, ...groupActivities(projected) };
+   };
+ }
+diff --git a/packages/app/src/plugins/timeline/activity-groups.ts b/packages/app/src/plugins/timeline/activity-groups.ts
+new file mode 100644
+index 0000000..1ec18ac
+--- /dev/null
++++ b/packages/app/src/plugins/timeline/activity-groups.ts
+@@ -0,0 +1,117 @@
++import type { PluginTimelineStreamItem, StreamItem } from "@/types/stream";
++import { continuesTurn } from "@/agent-stream/turn-membership";
++
++// Local prototype adapter for tietiezhi's registered compact-activity-group renderer.
++// Other installations and native plan/subagent/worktree rows remain untouched.
++function isActivity(item: StreamItem): item is PluginTimelineStreamItem {
++  return (
++    item.kind === "plugin" &&
++    item.pluginId === "tietiezhi" &&
++    item.version === 1 &&
++    (item.itemKind === "compact-tool" || item.itemKind === "compact-reasoning")
++  );
++}
++function canJoin(
++  previous: PluginTimelineStreamItem,
++  next: StreamItem,
++): next is PluginTimelineStreamItem {
++  return isActivity(next) && continuesTurn(previous, next);
++}
++interface PreparedActivities {
++  rows: StreamItem[];
++  pending: PluginTimelineStreamItem[];
++}
++function retain(previous: StreamItem[], next: StreamItem[]): StreamItem[] {
++  const unchanged =
++    previous.length === next.length && previous.every((item, index) => item === next[index]);
++  return unchanged ? previous : next;
++}
++
++export function createPluginActivityGrouping() {
++  const prepared = new WeakMap<StreamItem[], PreparedActivities>();
++  const groups = new WeakMap<
++    PluginTimelineStreamItem,
++    { members: PluginTimelineStreamItem[]; row: PluginTimelineStreamItem }
++  >();
++  let previousTail: StreamItem[] = [];
++  let previousHead: StreamItem[] = [];
++  function buildGroup(members: PluginTimelineStreamItem[]): PluginTimelineStreamItem {
++    const first = members[0];
++    const latest = members.at(-1);
++    if (!first || !latest) throw new Error("Empty activity group");
++    const cached = groups.get(first);
++    const unchanged =
++      cached &&
++      cached.members.length === members.length &&
++      cached.members.every((item, index) => item === members[index]);
++    if (unchanged) return cached.row;
++    const row: PluginTimelineStreamItem = {
++      ...latest,
++      id: first.id,
++      pluginItemId: first.pluginItemId,
++      itemKind: "compact-activity-group",
++      data: {
++        items: members.map((item) => ({
++          id: item.id,
++          kind: item.itemKind,
++          version: item.version,
++          timestamp: item.timestamp.toISOString(),
++          data: item.data,
++        })),
++      },
++    };
++    groups.set(first, { members, row });
++    return row;
++  }
++  function prepare(tail: StreamItem[]): PreparedActivities {
++    const cached = prepared.get(tail);
++    if (cached) return cached;
++    const rows: StreamItem[] = [];
++    let pending: PluginTimelineStreamItem[] = [];
++    function flush() {
++      if (pending.length) rows.push(buildGroup(pending));
++      pending = [];
++    }
++    for (const item of tail) {
++      const latest = pending.at(-1);
++      if (latest && !canJoin(latest, item)) flush();
++      if (isActivity(item)) pending.push(item);
++      else rows.push(item);
++    }
++    const trailing = pending;
++    flush();
++    const result = { rows: retain(tail, rows), pending: trailing };
++    prepared.set(tail, result);
++    return result;
++  }
++  return (input: { tail: StreamItem[]; head: StreamItem[] }) => {
++    const history = prepare(input.tail);
++    let pending = [...history.pending];
++    let inHistory = pending.length > 0;
++    let changedHistory = false;
++    let tail = history.rows;
++    const head: StreamItem[] = [];
++    function flush() {
++      if (pending.length) {
++        const row = buildGroup(pending);
++        if (inHistory && changedHistory) tail = [...history.rows.slice(0, -1), row];
++        if (!inHistory) head.push(row);
++      }
++      pending = [];
++      inHistory = false;
++      changedHistory = false;
++    }
++    for (const item of input.head) {
++      const latest = pending.at(-1);
++      if (latest && !canJoin(latest, item)) flush();
++      if (isActivity(item)) {
++        pending.push(item);
++        if (inHistory) changedHistory = true;
++      } else head.push(item);
++    }
++    flush();
++    previousTail = retain(previousTail, retain(input.tail, tail));
++    previousHead = retain(previousHead, retain(input.head, head));
++    return { tail: previousTail, head: previousHead };
++  };
++}
+diff --git a/packages/app/src/plugins/timeline/index.ts b/packages/app/src/plugins/timeline/index.ts
+index b1734e9..4d0e416 100644
+--- a/packages/app/src/plugins/timeline/index.ts
++++ b/packages/app/src/plugins/timeline/index.ts
+@@ -11,5 +11,17 @@ export function useInstalledTimelineTransform(serverId: string): TimelineItemTra
+     () => installed.filter((plugin) => plugin.serverId === serverId),
+     [installed, serverId],
+   );
+-  return useMemo(() => (input) => transformTimelineItem({ ...input, plugins }), [plugins]);
++  return useMemo(() => {
++    const compactActivityGrouping = plugins.some(
++      (plugin) =>
++        plugin.id === "tietiezhi" &&
++        plugin.timelineRenderers.some(
++          (renderer) => renderer.kind === "compact-activity-group" && renderer.version === 1,
++        ),
++    );
++    return Object.assign(
++      (input: Parameters<TimelineItemTransform>[0]) => transformTimelineItem({ ...input, plugins }),
++      { compactActivityGrouping },
++    );
++  }, [plugins]);
+ }
+diff --git a/packages/app/src/plugins/timeline/model.ts b/packages/app/src/plugins/timeline/model.ts
+index f97d67e..d1414ee 100644
+--- a/packages/app/src/plugins/timeline/model.ts
++++ b/packages/app/src/plugins/timeline/model.ts
+@@ -17,9 +17,9 @@ export interface TimelineItemTransformInput {
+   sourceId: string;
+ }
+ 
+-export type TimelineItemTransform = (
++export type TimelineItemTransform = ((
+   input: TimelineItemTransformInput,
+-) => InstalledPluginTimelineItem[] | undefined;
++) => InstalledPluginTimelineItem[] | undefined) & { compactActivityGrouping?: boolean };
+ 
+ function isTimelineData(value: unknown, ancestors: Set<object>): value is PluginTimelineData {
+   if (value === null || typeof value === "string" || typeof value === "boolean") {
+diff --git a/packages/app/src/plugins/timeline/projection.test.ts b/packages/app/src/plugins/timeline/projection.test.ts
+index 2dc95ed..671da2e 100644
+--- a/packages/app/src/plugins/timeline/projection.test.ts
++++ b/packages/app/src/plugins/timeline/projection.test.ts
+@@ -1,9 +1,14 @@
+ import { describe, expect, it, vi } from "vitest";
+-import type { StreamItem } from "@/types/stream";
++import type { PluginTimelineStreamItem, StreamItem } from "@/types/stream";
++import { createPluginActivityGrouping } from "./activity-groups";
++import { createStreamPresentation } from "@/agent-stream/presentation";
+ import type { TimelineItemTransform } from "./model";
+ import { projectPluginTimelineItems } from "./projection";
+ 
+-function thought(text: string, status: "loading" | "ready" = "loading"): StreamItem {
++function thought(
++  text: string,
++  status: "loading" | "ready" = "loading",
++): Extract<StreamItem, { kind: "thought" }> {
+   return {
+     kind: "thought",
+     id: "thought-1",
+@@ -13,6 +18,206 @@ function thought(text: string, status: "loading" | "ready" = "loading"): StreamI
+   };
+ }
+ 
++function compact(id: string, kind = "compact-tool", turnId = "turn-1"): PluginTimelineStreamItem {
++  return {
++    kind: "plugin",
++    id,
++    pluginId: "tietiezhi",
++    pluginItemId: id,
++    itemKind: kind,
++    version: 1,
++    turnId,
++    timestamp: new Date("2026-01-01T00:00:00.000Z"),
++    timelineCursor: { epoch: "epoch", seq: Number(id.replace(/\D/g, "")) || 1 },
++    data: {
++      name: "bash",
++      status: "completed",
++      detail: { type: "shell", command: id },
++      error: null,
++    },
++  };
++}
++
++describe("plugin activity layout grouping", () => {
++  it("turns fifty source activities into one actual display row, with no hidden placeholders", () => {
++    const group = createPluginActivityGrouping();
++    const source = Array.from({ length: 50 }, (_, index) => compact(`tool-${index}`));
++    const result = group({ tail: source, head: [] });
++    expect(result.tail).toHaveLength(1);
++    expect(result.head).toHaveLength(0);
++    expect(result.tail[0]).toMatchObject({
++      id: source[0].id,
++      timelineCursor: source[49].timelineCursor,
++      itemKind: "compact-activity-group",
++      data: {
++        items: source.map((item) => ({
++          id: item.id,
++          kind: item.itemKind,
++          version: item.version,
++          timestamp: item.timestamp.toISOString(),
++          data: item.data,
++        })),
++      },
++    });
++    expect(source).toHaveLength(50);
++    expect(source[0].itemKind).toBe("compact-tool");
++  });
++  it("keeps prose, turn changes, other plugins and native controls as group boundaries", () => {
++    const body: StreamItem = {
++      kind: "assistant_message",
++      id: "body",
++      text: "visible body",
++      timestamp: new Date(0),
++    };
++    const other = { ...compact("other"), pluginId: "other-plugin" };
++    const rows = [
++      compact("a"),
++      compact("b", "compact-reasoning"),
++      body,
++      compact("c"),
++      compact("d", "compact-tool", "turn-2"),
++      other,
++      compact("e"),
++    ];
++    const result = createPluginActivityGrouping()({ tail: rows, head: [] });
++    expect(result.tail.map((row) => row.id)).toEqual(["a", "body", "c", "d", "other", "e"]);
++    expect(result.tail[1]).toBe(body);
++    expect(result.tail[4]).toBe(other);
++  });
++  it("joins retained history and live head without moving the existing group host", () => {
++    const group = createPluginActivityGrouping();
++    const first = compact("first");
++    const reasoningRow = compact("thought", "compact-reasoning");
++    const body: StreamItem = {
++      kind: "assistant_message",
++      id: "body",
++      text: "reply",
++      timestamp: new Date(0),
++    };
++    const tail = [first];
++    const initial = group({ tail, head: [] });
++    const live = group({ tail, head: [reasoningRow, body] });
++    expect(live.tail).toHaveLength(1);
++    expect(live.tail[0].id).toBe(initial.tail[0].id);
++    expect(live.head).toEqual([body]);
++    expect(live.tail[0]).toMatchObject({ data: { items: [{ id: "first" }, { id: "thought" }] } });
++    const repeated = group({ tail, head: [reasoningRow, body] });
++    expect(repeated.tail).toBe(live.tail);
++    expect(repeated.head).toBe(live.head);
++    const committed = group({ tail: [first, reasoningRow, body], head: [] });
++    expect(committed.tail[0]).toBe(live.tail[0]);
++  });
++  it("updates a running member while retaining the header identity and sealed history", () => {
++    const group = createPluginActivityGrouping();
++    const source = compact("first");
++    const initial = group({ tail: [source], head: [] });
++    const updated = {
++      ...source,
++      data: {
++        name: "bash",
++        detail: { type: "shell", command: "first" },
++        status: "failed",
++        error: "permission denied",
++      },
++    };
++    const result = group({ tail: [updated], head: [] });
++    expect(result.tail[0].id).toBe(initial.tail[0].id);
++    expect(result.tail[0]).toMatchObject({
++      data: { items: [{ data: { status: "failed", error: "permission denied" } }] },
++    });
++    const untouched: StreamItem[] = [thought("native")];
++    expect(group({ tail: untouched, head: [] }).tail).toBe(untouched);
++  });
++});
++
++describe("activity grouping in the real presentation pipeline", () => {
++  const transform: TimelineItemTransform = Object.assign(
++    (input: Parameters<TimelineItemTransform>[0]) => {
++      if (input.item.type !== "reasoning") return undefined;
++      return [
++        {
++          type: "plugin" as const,
++          id: input.sourceId,
++          pluginId: "tietiezhi",
++          kind: "compact-reasoning",
++          version: 1,
++          data: { text: input.item.text, phase: input.phase },
++        },
++      ];
++    },
++    { compactActivityGrouping: true },
++  );
++  it("emits one display row before layout and virtualization, not fifty empty plugin rows", () => {
++    const source = Array.from({ length: 50 }, (_, index) => ({
++      ...thought(`thought ${index}`, "ready"),
++      id: `thought-${index}`,
++    }));
++    const body: StreamItem = {
++      kind: "assistant_message",
++      id: "body",
++      text: "Keep this visible",
++      timestamp: new Date(0),
++    };
++    const result = createStreamPresentation()({
++      tail: [body, ...source, { ...body, id: "next-body" }],
++      head: [],
++      transform,
++      level: "detailed",
++      isTurnActive: false,
++    });
++    expect(result.tail.map((row) => row.kind)).toEqual([
++      "assistant_message",
++      "plugin",
++      "assistant_message",
++    ]);
++    expect(result.tail[1]).toMatchObject({
++      itemKind: "compact-activity-group",
++      data: { items: source.map((row) => ({ data: { text: row.text } })) },
++    });
++  });
++  it("stays on the original rendering path when the group renderer is absent", () => {
++    const disabled: TimelineItemTransform = Object.assign(
++      (input: Parameters<TimelineItemTransform>[0]) => transform(input),
++      { compactActivityGrouping: false },
++    );
++    const source = [thought("one"), { ...thought("two"), id: "thought-2" }];
++    const result = createStreamPresentation()({
++      tail: source,
++      head: [],
++      transform: disabled,
++      level: "detailed",
++      isTurnActive: false,
++    });
++    expect(result.tail).toHaveLength(2);
++    expect(result.tail).toMatchObject([
++      { itemKind: "compact-reasoning" },
++      { itemKind: "compact-reasoning" },
++    ]);
++  });
++  it("includes the live thought in the retained group and seals it after completion", () => {
++    const present = createStreamPresentation();
++    const tail = [thought("finished", "ready")];
++    const head = [{ ...thought("growing"), id: "live" }];
++    const active = present({ tail, head, transform, level: "detailed", isTurnActive: true });
++    expect(active.tail).toHaveLength(1);
++    expect(active.head).toHaveLength(0);
++    expect(active.tail[0]).toMatchObject({
++      data: { items: [{ data: { phase: "complete" } }, { data: { phase: "streaming" } }] },
++    });
++    const committed = present({
++      tail: [...tail, { ...head[0], status: "ready" as const }],
++      head: [],
++      transform,
++      level: "detailed",
++      isTurnActive: false,
++    });
++    expect(committed.tail[0].id).toBe(active.tail[0].id);
++    expect(committed.tail[0]).toMatchObject({
++      data: { items: [{ data: { phase: "complete" } }, { data: { phase: "complete" } }] },
++    });
++  });
++});
++
+ describe("plugin timeline projection", () => {
+   it("does not expose mutable tool detail from stream state", () => {
+     const detail = { type: "read" as const, filePath: "/repo/original.ts" };

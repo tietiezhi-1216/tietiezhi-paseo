@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseInline, parseMarkdown, tableCells } from "../shared/markdown.ts";
-import { activitySummary, reasoningSummary } from "../shared/activity.ts";
+import { activitySummary, reasoningSummary, CompactActivityGroupSchema } from "../shared/activity.ts";
 
 test("Markdown separates paragraphs, headings and nested lists", () => {
   const blocks = parseMarkdown("# 标题\n\n正文第一行\n正文第二行\n\n- 第一项\n  - 子项\n- 第二项\n\n结束");
@@ -32,4 +32,14 @@ test("activity previews retain actual supplied text, not invented reasoning", ()
   assert.equal(activitySummary({ command: "echo\nhello" }), "echo hello");
   assert.equal(reasoningSummary("\n**检查文件**\n第二段"), "检查文件");
   assert.equal(reasoningSummary(""), "");
+});
+test("activity groups preserve failed tools and thinking, and reject empty or malformed groups", () => {
+  const data = { items: [
+    { id: "tool", kind: "compact-tool", version: 1, timestamp: "2026-01-01T00:00:00.000Z", data: { name: "bash", status: "failed", detail: { type: "shell", command: "pwd" }, error: "permission denied" } },
+    { id: "thought", kind: "compact-reasoning", version: 1, timestamp: "2026-01-01T00:00:01.000Z", data: { text: "Checking files", phase: "complete" } },
+  ] };
+  assert.deepEqual(CompactActivityGroupSchema.parse(data), data);
+  assert.equal(CompactActivityGroupSchema.safeParse({ items: [] }).success, false);
+  assert.equal(CompactActivityGroupSchema.safeParse({ items: [{ ...data.items[0], timestamp: "invalid" }] }).success, false);
+  assert.equal(CompactActivityGroupSchema.safeParse({ items: [{ ...data.items[0], kind: "unknown" }] }).success, false);
 });
