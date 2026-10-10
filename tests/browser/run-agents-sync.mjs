@@ -49,6 +49,14 @@ try {
     await page.evaluate(() => globalThis.__agentsSync.rename("b", "current", "远端任务"));
     assert.equal(await label.innerText(), "已改名任务 · done · 1", "Peer Host with same Agent ID must not replace current name");
     await pill.click(); await matches(1, 6);
+    const rowHeights = await page.getByTestId("agents-list-row").evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+    assert.ok(rowHeights.length > 1);
+    assert.ok(rowHeights.every(height => Math.abs(height - (mobile ? 40 : 32)) < 0.5), `compact list row heights: ${rowHeights}`);
+    const rowPitch = await page.getByTestId("agents-section-working").evaluate(header => {
+      const rows = header.parentElement.querySelectorAll('[data-testid="agents-list-row"]');
+      return rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top;
+    });
+    assert.ok(Math.abs(rowPitch - (mobile ? 43 : 35)) < 0.5, `row pitch should match the old dense list: ${rowPitch}`);
     await page.getByTestId("agents-popover-footer").getByText("当前 · 已改名任务", { exact: true }).waitFor();
     await page.evaluate(() => globalThis.__agentsSync.unrelatedRemoval("a", "a3"));
     await matches(1, 6);
@@ -106,5 +114,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, current Agent name + rename sync, peer-name isolation, current-host restore, operation-aware password/Enter retries, desktop/mobile, subscription cleanup (mock APIs).");
+  console.log("Agents sync UI passed: actual pill registration + rendered icon/popover, same-source done/working counts, duplicate Host IDs, children/archive exclusion, scoped live events, unrelated-filter removal isolation, late list/RPC protection, Host switch, closed-popover updates, current Agent name + rename sync, peer-name isolation, current-host restore, operation-aware password/Enter retries, dense desktop row pitch and mobile tap space, desktop/mobile, subscription cleanup (mock APIs).");
 } finally { await browser?.close(); if (server) await new Promise(done => server.close(done)); await rm(temporary, { recursive: true, force: true }); }

@@ -289,7 +289,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     }).catch(() => setReloadNote("复制失败，请重试。"));
   };
   const renderAgentRow = ({ agent, workspace }: (typeof all)[number], label: string, color: string, breathing = false) => (
-    <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
+    <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} testID="agents-list-row" onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 6, paddingVertical: compact ? 7 : 5, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
         <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 5 }}>
           <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: breathing ? pulse : 1 }} />
@@ -317,14 +317,14 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
           onPressIn={() => { longPressReference.current = null; }}
           onPress={(event) => { event.stopPropagation(); if (longPressReference.current === referenceKey(agent)) return; copyAgentReference(agent); }}
           onLongPress={(event) => { event.stopPropagation(); longPressReference.current = referenceKey(agent); copyAgentReference(agent, true); }}
-          style={({ pressed }) => ({ minWidth: 32, minHeight: 26, paddingHorizontal: 4, alignItems: "center", justifyContent: "center", borderRadius: 4, backgroundColor: pressed ? theme.colors.surface2 : "transparent" })}>
+          style={({ pressed }) => ({ minWidth: 32, minHeight: compact ? 26 : 22, paddingHorizontal: 4, alignItems: "center", justifyContent: "center", borderRadius: 4, backgroundColor: pressed ? theme.colors.surface2 : "transparent" })}>
           <Text style={{ color: copiedId === referenceKey(agent) ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "400" }}>{copiedId === referenceKey(agent) ? "已复制" : "引用"}</Text>
         </Pressable>
       </View>
     </Pressable>
   );
   const section = (label: string, items: typeof all, color: string, breathing = false) => items.length === 0 ? null : (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: 3 }}>
       <Text testID={`agents-section-${label}`} style={{ color, fontSize: compact ? 12 : 13, fontWeight: "700", paddingHorizontal: 4, letterSpacing: 0.3 }}>{label} · {items.length}</Text>
       {items.map((item) => renderAgentRow(item, label, color, breathing))}
     </View>
@@ -478,7 +478,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
                     const items = archivedGroups[bucket];
                     if (!items || items.length === 0) return null;
                     return (
-                      <View key={bucket} style={{ gap: 4 }}>
+                      <View key={bucket} style={{ gap: 3 }}>
                         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600", paddingHorizontal: 4, letterSpacing: 0.2 }}>
                           {bucket} · {items.length}
                         </Text>
