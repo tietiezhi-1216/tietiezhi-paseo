@@ -7,6 +7,7 @@ import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentL
 import { agentsPillState, combineAgentSources, formatAgentsPillLabel, type PillColorKind } from "../shared/agents-pill.ts";
 import { localAgentDirectory, retainHostAgents, useLocalAgents } from "./agents-directory.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
+import { useAgentProbeWorker } from "./agent-probe.ts";
 
 type Theme = PluginSurfaceProps["theme"];
 
@@ -56,6 +57,7 @@ function useOwnedAgents(hostId: string, hostName: string) {
   paseoRef.current = paseo;
   const rpc = useRpc(agentActivity);
   const hosts = useHosts();
+  useAgentProbeWorker(hostId, hosts);
   const connectedHosts = hosts.filter((host) => host.status === "online" && host.serverId !== hostId);
   const hostSignature = JSON.stringify(connectedHosts.map((host) => [host.serverId, host.label]));
   useSyncExternalStore(localAgentDirectory.subscribeAll, localAgentDirectory.getVersion);

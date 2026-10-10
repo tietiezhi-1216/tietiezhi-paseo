@@ -14,9 +14,16 @@ import { PerformanceService } from "./server/performance.ts";
 import { getModelPerformance, getAgentTurnPerformance } from "./shared/performance.ts";
 import { forkReply } from "./shared/fork.ts";
 import { createReplyFork } from "./server/fork.ts";
+import { createAgentProbeBroker } from "./server/agent-probe.ts";
+import { requestAgentProbe, pendingAgentProbes, reportAgentProbe, collectAgentProbe } from "./shared/agent-probe.ts";
 
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
+  const probes = createAgentProbeBroker();
+  server.handle(requestAgentProbe, ({ agentId }) => probes.request(agentId));
+  server.handle(pendingAgentProbes, () => probes.pending());
+  server.handle(reportAgentProbe, ({ requestId, hosts }) => probes.report(requestId, hosts));
+  server.handle(collectAgentProbe, ({ requestId }) => probes.collect(requestId));
   const quotas = new QuotaService();
   quotas.startBackgroundPolling(lifetime.signal);
   const performance = new PerformanceService();
@@ -56,6 +63,7 @@ export default function contribute(server: PluginServerContext) {
   });
   return async () => {
     lifetime.abort();
+    probes.dispose();
     quotas.stop();
     await login.dispose();
     await closeRemoteAgentClients();
