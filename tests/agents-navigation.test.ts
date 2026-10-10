@@ -83,7 +83,7 @@ test("the agents popover reuses the pill query so the first open is already popu
   assert.match(client, /minWidth: compact \? 280 : 360/);
   assert.match(client, /<ScrollView/);
   assert.match(client, /kind: "popover"/);
-  assert.match(client, /复制当前 Agent ID/);
+  assert.match(client, /复制当前 Agent 引用/);
   assert.doesNotMatch(client, /kind: "menu"/);
   assert.match(client, /autoFocus/);
   assert.match(client, /搜索 Agent \/ 工作区 \/ ID/);

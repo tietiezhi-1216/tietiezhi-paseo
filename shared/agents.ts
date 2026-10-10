@@ -165,6 +165,26 @@ export function paseoAgentIdClipboardText(id: string): string {
   return `Paseo Agent ID: ${id.trim()}`;
 }
 
+/** Display labels may change; HOST + AGENT is the stable, exact routing identity. */
+export function agentReferenceClipboardText(agent: {
+  id: string; serverId: string | null | undefined; hostName: string;
+  name?: string | null; workspaceId?: string | null;
+}): string {
+  const identity = (value: string, field: string) => {
+    const text = value.trim();
+    if (!text || /[\u0000-\u001f\u007f\u2028\u2029]/.test(text)) throw new Error(`无效的 ${field}`);
+    return text;
+  };
+  const label = (value: string) => value.replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+  return [
+    `DEVICE: ${label(agent.hostName) || "未命名设备"}`,
+    `HOST: ${agent.serverId ? identity(agent.serverId, "Host ID") : "unknown (未验证设备身份)"}`,
+    `AGENT: ${identity(agent.id, "Agent ID")}`,
+    ...(agent.name ? [`TITLE: ${label(agent.name)}`] : []),
+    ...(agent.workspaceId ? [`WORKSPACE: ${identity(agent.workspaceId, "Workspace ID")}`] : []),
+  ].join("\n");
+}
+
 export const RemoteAgentSchema = z.object({
   hostId: z.string(),
   hostName: z.string(),

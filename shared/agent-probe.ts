@@ -1,7 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export const ProbeRequestSchema = z.object({ requestId: z.uuid(), agentId: z.uuid() });
+export const ProbeRequestSchema = z.object({ requestId: z.uuid(), agentId: z.uuid(), serverId: z.string().min(1).max(200).optional() });
 export const ProbeHostResultSchema = z.object({
   serverId: z.string().min(1).max(200),
   label: z.string().max(200),
@@ -12,13 +12,13 @@ export const ProbeHostResultSchema = z.object({
   }).nullable(),
 });
 export const ProbeResultSchema = z.object({
-  requestId: z.uuid(), agentId: z.uuid(),
+  requestId: z.uuid(), agentId: z.uuid(), serverId: z.string().min(1).max(200).optional(),
   state: z.enum(["pending", "found", "expired"]),
   hosts: z.array(ProbeHostResultSchema).max(64),
 });
 export type ProbeHostResult = z.infer<typeof ProbeHostResultSchema>;
 export const requestAgentProbe = defineRpc({
-  name: "agents.probe.request", input: z.object({ agentId: z.uuid() }),
+  name: "agents.probe.request", input: z.object({ agentId: z.uuid(), serverId: z.string().min(1).max(200).optional() }),
   output: z.object({ requestId: z.uuid() }),
 });
 export const pendingAgentProbes = defineRpc({

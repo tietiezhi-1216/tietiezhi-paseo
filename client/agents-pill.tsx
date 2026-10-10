@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Dimensions, Easing, Linking, Pressable, Sc
 import { type PluginButtonContentProps, type PluginButtonIconProps, type PluginClientContext, type PluginSurfaceProps, getPaseoClient, useHosts, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentLifecycleInput, AGENT_LIFECYCLE_LABELS, type AgentLifecycleOperation, agentActivity, agentActivityAt, agentDisplaySection, agentIdClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, paseoAgentIdClipboardText, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
+import { AGENT_ACTIVITY_QUERY_KEY, ARCHIVED_DATE_GROUPS, type DateBucket, agentLifecycleInput, AGENT_LIFECYCLE_LABELS, type AgentLifecycleOperation, agentActivity, agentActivityAt, agentDisplaySection, agentReferenceClipboardText, agentReload, agentArchive, agentUnarchive, getAgentDateBucket, agentMatchesQuery, isListedAgent, isDisplayableAgent, prepareAgentNavigation, type RemoteAgent } from "../shared/agents.ts";
 import { agentsPillState, combineAgentSources, formatAgentsPillLabel, type PillColorKind } from "../shared/agents-pill.ts";
 import { localAgentDirectory, retainHostAgents, useLocalAgents } from "./agents-directory.ts";
 import { dispatchWebAgentTarget } from "./web.ts";
@@ -135,6 +135,7 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
   const archiveRpc = useRpc(agentArchive);
   const unarchiveRpc = useRpc(agentUnarchive);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const longPressReference = useRef<string | null>(null);
   const [reloadingId, setReloadingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
@@ -279,11 +280,13 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
     archivedGroups[getAgentDateBucket(item.agent)].push(item);
   }
   const isArchivedExpanded = showArchived || query.trim().length > 0;
-  const copyAgentId = (agentId: string) => {
-    void copyText(agentIdClipboardText(agentId)).then(() => {
-      setCopiedId(agentId);
-      setTimeout(() => setCopiedId((current) => current === agentId ? null : current), 1200);
-    }).catch(() => {});
+  const referenceKey = (agent: RemoteAgent) => JSON.stringify([agent.serverId ?? agent.hostId, agent.id]);
+  const copyAgentReference = (agent: RemoteAgent, rawId = false) => {
+    const key = referenceKey(agent);
+    void copyText(rawId ? agent.id : agentReferenceClipboardText(agent)).then(() => {
+      setCopiedId(key);
+      setTimeout(() => setCopiedId((current) => current === key ? null : current), 1200);
+    }).catch(() => setReloadNote("复制失败，请重试。"));
   };
   const renderAgentRow = ({ agent, workspace }: (typeof all)[number], label: string, color: string, breathing = false) => (
     <Pressable key={`${agent.serverId ?? agent.hostId}:${agent.id}`} onPress={(event) => { event.stopPropagation(); onSelectAgent(agent); }} style={{ backgroundColor: theme.colors.surface1, borderRadius: 8, paddingVertical: compact ? 7 : 8, paddingHorizontal: compact ? 8 : 10, cursor: "pointer" } as any}>
@@ -309,8 +312,13 @@ function AgentActivity({ theme, compact, currentServerId, hostName, query, onSel
             <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700" }}>{reloadingId === agent.id ? "重载中" : "重载"}</Text>
           </Pressable>
         )}
-        <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent ID ${agent.id}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); copyAgentId(agent.id); }}>
-          <Text style={{ color: copiedId === agent.id ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>{copiedId === agent.id ? "已复制" : "ID"}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`复制 Agent 引用 ${agent.id}`} accessibilityHint="点按复制设备、Host 和 Agent 标识；长按仅复制 Agent ID" hitSlop={4}
+          delayLongPress={450}
+          onPressIn={() => { longPressReference.current = null; }}
+          onPress={(event) => { event.stopPropagation(); if (longPressReference.current === referenceKey(agent)) return; copyAgentReference(agent); }}
+          onLongPress={(event) => { event.stopPropagation(); longPressReference.current = referenceKey(agent); copyAgentReference(agent, true); }}
+          style={({ pressed }) => ({ minWidth: 32, minHeight: 26, paddingHorizontal: 4, alignItems: "center", justifyContent: "center", borderRadius: 4, backgroundColor: pressed ? theme.colors.surface2 : "transparent" })}>
+          <Text style={{ color: copiedId === referenceKey(agent) ? theme.colors.statusSuccess : theme.colors.foregroundMuted, fontSize: 10, fontWeight: "400" }}>{copiedId === referenceKey(agent) ? "已复制" : "引用"}</Text>
         </Pressable>
       </View>
     </Pressable>
@@ -876,9 +884,13 @@ function AgentsPopover(props: PluginButtonContentProps) {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="复制当前 Agent ID"
+              accessibilityLabel="复制当前 Agent 引用"
+              accessibilityHint="复制设备、Host、Agent 和工作区标识，可直接贴进提示词"
               onPress={() => {
-                void copyText(paseoAgentIdClipboardText(currentAgentId)).then(() => {
+                void copyText(agentReferenceClipboardText({
+                  id: currentAgentId, serverId: props.host.id, hostName: props.host.label,
+                  name: currentTitle, workspaceId: currentAgent?.workspaceId,
+                })).then(() => {
                   setCopiedCurrent(true);
                   setTimeout(() => setCopiedCurrent(false), 1500);
                 }).catch(() => {});
@@ -893,7 +905,7 @@ function AgentsPopover(props: PluginButtonContentProps) {
               }}
             >
               <Text style={{ color: copiedCurrent ? props.theme.colors.statusSuccess : props.theme.colors.foregroundMuted, fontSize: 10, fontWeight: "700" }}>
-                {copiedCurrent ? "已复制" : "复制 ID"}
+                {copiedCurrent ? "已复制" : "复制引用"}
               </Text>
             </Pressable>
           </View>

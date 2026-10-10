@@ -3,7 +3,7 @@ import { Text, TextInput, View } from "react-native";
 import { getPaseoClient, useHosts, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueries } from "@tanstack/react-query";
-import { SECTION_LABELS, SECTION_ORDER, agentKey, filterAgents, type AgentRow } from "../shared/agents.ts";
+import { SECTION_LABELS, SECTION_ORDER, agentKey, agentReferenceClipboardText, filterAgents, type AgentRow } from "../shared/agents.ts";
 import { readHostAgents, sendAgentMessage } from "./host-directory.ts";
 import { HOST_STATUS_LABELS } from "./hosts.tsx";
 import { Action, Disclosure, IconAction, Loading, Notice, errorText } from "./ui.tsx";
@@ -106,8 +106,8 @@ export function AgentsPanel({ theme, host: origin, navigation }: PluginSurfacePr
                     try { navigation?.openAgent({ serverId: agent.serverId, agentId: agent.id }); setActionError(""); }
                     catch { setActionError("无法打开目标 Host 的会话，请检查连接后重试"); }
                   }} />
-                  <IconAction theme={theme} title="复制 Host + Agent ID" icon="Copy" onPress={() => {
-                    void copyText(`Host: ${agent.serverId}\nAgent: ${agent.id}`).then(() => setNotice("已复制 Host 和 Agent ID")).catch(() => setActionError("复制失败，请手动选择 ID"));
+                  <IconAction theme={theme} title="复制设备与 Agent 引用" icon="Copy" onPress={() => {
+                    void copyText(agentReferenceClipboardText({ id: agent.id, serverId: agent.serverId, hostName: hostMap.get(agent.serverId)?.label ?? agent.serverId, name: agent.title, workspaceId: agent.workspaceId })).then(() => setNotice("已复制设备与 Agent 引用")).catch(() => setActionError("复制失败，请手动选择 ID"));
                   }} />
                   <IconAction theme={theme} title="发消息" icon="Send" disabled={!usable(agent) || send.isPending} onPress={() => {
                     setDraft({ target: agent, text: "", messageId: newMessageId() }); setNotice(""); setActionError(""); send.reset();

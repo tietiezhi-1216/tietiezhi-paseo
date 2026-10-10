@@ -157,6 +157,25 @@ Relay 为端到端加密，不需要公网开放 daemon 端口。桌面也可使
 
 此入口依赖 App 保持连接且 Agents 胶囊挂载。无客户端响应时返回超时，而不是声称 Agent 不存在；断线与查询失败分别保留。请求最多保留 80 秒，插件停止时清空。目前是只读 RPC 桥接，尚未提供通用 MCP 调用工具或跨设备任务发送。
 
+Agents 行右侧的「引用」和当前会话的「复制引用」会复制 `DEVICE`、`HOST`、`AGENT`、标题及可用的工作区 ID；手机长按行上的「引用」仅复制原始 Agent ID。设备名用于阅读，稳定的 `HOST + AGENT` 用于路由。同 ID 在不同设备上不会混淆，身份未验证时明确标记 unknown。
+
+可给有终端工具的 AI 这样的提示词：
+
+```text
+请通过 tietiezhi 插件查询下面设备上的 Agent 状态，不发送任务，也不要回退到其他 Host：
+DEVICE: macmini-worker-1
+HOST: srv_3p-XJb39DOTY
+AGENT: 61037014-ce93-42c8-a21b-de527ef83bc3
+```
+
+在插件源码目录运行下列只读命令；在其他工作区需使用该文件的绝对路径。输入 Host ID 后仅访问这个 App 连接，目标离线或未配置时不会扫描其他设备：
+
+```bash
+node server/query-agent-cli.mjs --server-id srv_3p-XJb39DOTY --agent-id 61037014-ce93-42c8-a21b-de527ef83bc3
+```
+
+复制引用只是提供标识，并不自动为任意 AI 注册工具。当前插件 API 可复用连接进行查询、发消息和归档，但未暴露跨 Host 的运行时重载或原生精确分叉方法。当前 Host 的后台重载／分叉 RPC 保留原逻辑；跨设备列表的重载／恢复旧连接回退仍可能要求配置凭据，尚未改成完整的跨 Host 免密操作。
+
 ## 开发与验证
 
 - `npm run typecheck`：针对已固定的新版 SDK 检查。

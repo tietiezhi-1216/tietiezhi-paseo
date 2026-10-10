@@ -20,7 +20,7 @@ import { requestAgentProbe, pendingAgentProbes, reportAgentProbe, collectAgentPr
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
   const probes = createAgentProbeBroker();
-  server.handle(requestAgentProbe, ({ agentId }) => probes.request(agentId));
+  server.handle(requestAgentProbe, ({ agentId, serverId }) => probes.request(agentId, serverId));
   server.handle(pendingAgentProbes, () => probes.pending());
   server.handle(reportAgentProbe, ({ requestId, hosts }) => probes.report(requestId, hosts));
   server.handle(collectAgentProbe, ({ requestId }) => probes.collect(requestId));

@@ -9,8 +9,10 @@ type LookupApi = {
 };
 
 /** Read native metadata only; no refresh/resume, timeline fetch, prompt, or provider request. */
-export async function probeConnectedHosts(hosts: readonly HostSummary[], agentId: string, getApi: (id: string) => LookupApi, signal: AbortSignal): Promise<ProbeHostResult[]> {
-  return Promise.all(hosts.slice(0, 64).map(async host => {
+export async function probeConnectedHosts(hosts: readonly HostSummary[], agentId: string, getApi: (id: string) => LookupApi, signal: AbortSignal, serverId?: string): Promise<ProbeHostResult[]> {
+  const targets = serverId ? hosts.filter(host => host.serverId === serverId) : hosts;
+  if (serverId && targets.length === 0) return [{ serverId, label: serverId, state: "offline", agent: null }];
+  return Promise.all(targets.slice(0, 64).map(async host => {
     const base = { serverId: host.serverId, label: host.label.slice(0, 200), agent: null };
     if (host.status !== "online") return { ...base, state: "offline" as const };
     try {

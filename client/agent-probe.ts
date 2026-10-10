@@ -6,7 +6,7 @@ import { probeConnectedHosts } from "./agent-probe-lookup.ts";
 
 type WorkerSource = () => {
   hosts: readonly HostSummary[];
-  pending: (input: Record<string, never>) => Promise<{ requests: { requestId: string; agentId: string }[] }>;
+  pending: (input: Record<string, never>) => Promise<{ requests: { requestId: string; agentId: string; serverId?: string }[] }>;
   report: (input: { requestId: string; hosts: ProbeHostResult[] }) => Promise<{ accepted: boolean }>;
 };
 const workers = new Map<string, { sources: Set<WorkerSource>; stop: () => void }>();
@@ -36,7 +36,7 @@ export function useAgentProbeWorker(sourceHostId: string, hosts: readonly HostSu
           for (const id of seen) if (!active.has(id)) seen.delete(id);
           for (const job of requests) {
             if (lifetime.signal.aborted || seen.has(job.requestId)) continue;
-            const results = await probeConnectedHosts(currentSource().hosts, job.agentId, getPaseoClient, lifetime.signal);
+            const results = await probeConnectedHosts(currentSource().hosts, job.agentId, getPaseoClient, lifetime.signal, job.serverId);
             if (lifetime.signal.aborted) break;
             await currentSource().report({ requestId: job.requestId, hosts: results });
             seen.add(job.requestId);
