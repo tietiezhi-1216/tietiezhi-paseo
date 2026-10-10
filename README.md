@@ -184,9 +184,14 @@ node server/query-agent-cli.mjs --server-id srv_3p-XJb39DOTY --agent-id 61037014
 
 这是真实终端的固定安全诊断入口，不是任意远程 Shell 工具。若 App 未连接或诊断超时，返回失败／过期，不回退到其他设备；关闭未确认时保留测试终端 ID 并报告错误。测试命令含 45 秒自动退出兜底。实际复用已连接设备不需要复制密码、SSH 或在目标设备另装插件。
 
+## 代码块复制
+
+Markdown 代码块和 fenced text 块的右上角有常驻「复制」按钮，桌面与手机均可直接点击。仅复制块内原文，不包含语言标签、围栏或整条回复；换行和缩进保留。复制成功显示「已复制」，失败可重试；流式内容变化时不会把旧内容的复制结果显示为新内容已复制。使用宿主剪贴板 API，不读取或修改 DOM。
+
 ## 开发与验证
 
 - `npm run typecheck`：针对已固定的新版 SDK 检查。
+- `npm run test:code-copy`：桌面／触屏代码块复制回归，检查原文、多个块、失败重试、流式更新、宽代码溢出和卸载清理；使用模拟剪贴板，不代表真实设备剪贴板验收。
 - `npm test`：全部使用临时目录/模拟 SDK，不切换真实账号，不发送真实消息。
 - `npm run test:hermes`：使用 React Native 附带的真实 Hermes 引擎，通过 `eval` 加载未经 Metro 转换的 Agents 缓存实现，检查初始化、跨 Host 隔离、事件覆盖和订阅清理；可用 `HERMES_BIN` 指定引擎路径。这是引擎兼容性回归，不是手机 App 界面验收。
 - `npm run test:ui`：Chromium 界面回归，默认使用 macOS Google Chrome；可设置 `CHROME_PATH`，或执行 `npx playwright install chromium`。虚拟时钟验证进度条/动态标题同步、暂停/继续/重置/重播、关闭后继续更新、Host 切换时清理定时器。浏览器加载真实客户端入口的注册逻辑、模拟宿主与 RPC，验证无额度 Composer 胶囊、Agents 胶囊与列表状态/数量一致、顶部/底部注册和位置、单卡账号/额度布局、手动渠道同步、确认切换/切回、渠道变化/延迟返回隔离、离线缓存与卸载清理。

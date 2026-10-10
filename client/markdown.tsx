@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Linking, ScrollView, Text, View } from "react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { parseInline, parseMarkdown, type InlineNode, type MarkdownBlock } from "../shared/markdown.ts";
+import { CodeBlock } from "./code-block.tsx";
 
 type Theme = PluginTimelineItemProps["theme"];
 
@@ -27,12 +28,7 @@ function Blocks({ blocks, theme }: { blocks: MarkdownBlock[]; theme: Theme }) {
       case "heading": return <Text key={i} selectable accessibilityRole="header" style={{ color: theme.colors.foreground, fontWeight: "700", fontSize: [22, 20, 17, 15, 14, 14][block.level - 1], lineHeight: 29, marginTop: i ? 6 : 0, userSelect: "text" }}><Spans nodes={parseInline(block.text)} theme={theme} /></Text>;
       case "rule": return <View key={i} style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 6 }} />;
       case "quote": return <View key={i} style={{ borderLeftWidth: 3, borderLeftColor: theme.colors.border, paddingLeft: 12, paddingVertical: 3 }}><Blocks blocks={block.blocks} theme={theme} /></View>;
-      case "code": return <View key={i} testID="tietiezhi-markdown-code" style={{ borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface1, borderRadius: 8, overflow: "hidden" }}>
-        <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 11, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>{block.language}</Text>
-        <ScrollView horizontal contentContainerStyle={{ padding: 12 }}>
-          <Text selectable style={{ color: theme.colors.foreground, fontFamily: "monospace", fontSize: 12, lineHeight: 20, userSelect: "text" }}>{block.text}</Text>
-        </ScrollView>
-      </View>;
+      case "code": return <CodeBlock key={i} text={block.text} language={block.language} theme={theme} />;
       case "list": return <View key={i} testID="tietiezhi-markdown-list" style={{ gap: 5 }}>{block.items.map((item, n) => <View key={n} style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
         <Text selectable style={{ color: theme.colors.foregroundMuted, minWidth: 18, fontSize: 14, lineHeight: 23, textAlign: "right" }}>{item.checked === undefined ? item.marker : item.checked ? "☑" : "☐"}</Text>
         <View style={{ flex: 1, minWidth: 0 }}><Blocks blocks={item.blocks} theme={theme} /></View>

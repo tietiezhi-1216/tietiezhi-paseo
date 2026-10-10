@@ -28,6 +28,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:hermes": "node tests/hermes-agent-directory.mjs",
     "test:agent-reference": "node tests/browser/run-agent-reference.mjs",
+    "test:code-copy": "node tests/browser/run-code-copy.mjs",
     "test:ui": "node tests/browser/run.mjs && node tests/browser/run-agents-sync.mjs"
   },
   "devDependencies": {
