@@ -198,6 +198,7 @@ function App() {
         };
       }
       if (name.endsWith(".list")) return structuredClone(snapshots[hostId]);
+      if (name === "agents.probe.pending") return { requests: [] };
       if (name === "slotgame.agent.activity") {
         calls.push({ kind: "agent-activity", serverId: hostId, input });
         return { agents: [], hosts: [], fetchedAt: new Date().toISOString() };
@@ -224,6 +225,7 @@ function App() {
       if (name === "slotgame.performance.overview") {
         return { models: [], overallAvgTps: 0, totalTurns: 0, totalInputTokens: 0, totalOutputTokens: 0 };
       }
+      if (name !== "tietiezhi.accounts.switch") throw new Error("未模拟 RPC: " + name);
       calls.push({ kind: "switch", serverId: hostId, input });
       snapshots[hostId] = { ...snapshots[hostId], revision: "c".repeat(64), accounts: snapshots[hostId].accounts.map((a) => ({ ...a, active: a.id === input.id })) };
       return { snapshot: structuredClone(snapshots[hostId]), backupCreated: true, notice: "测试切换成功" };

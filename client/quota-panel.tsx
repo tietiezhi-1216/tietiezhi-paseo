@@ -8,6 +8,7 @@ import { getQuota, selectQuotaWindow, legacyQuotaWindows, type AccountQuota, typ
 import { quotaGroups } from "../shared/quota-groups.ts";
 import { timeUntilReset } from "../shared/quota-footer-label.ts";
 import { quotaPresentation } from "../shared/quota-state.ts";
+import { membershipExpiry } from "../shared/membership-expiry.ts";
 import { AccountsPanel } from "./accounts.tsx";
 import { Action, ChannelTabs, Notice, QuotaMeter, RemainingBar, hexAlpha } from "./ui.tsx";
 import { compactDateTime } from "../shared/ui-format.ts";
@@ -184,15 +185,24 @@ function HostQuotaPanel({ theme, host, family, onFamilyChange, ...props }: Quota
 export function AccountQuotaDetails({ theme, account, quota, pending }: {
   theme: PluginSurfaceProps["theme"]; account: Account; quota?: AccountQuota; pending: boolean;
 }) {
-  const now = Date.now();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      if (!active) return;
+      const current = Date.now();
+      setNow(current);
+      const untilExpiry = (account.subscriptionExpiresAt ?? 0) - current;
+      timer = setTimeout(tick, untilExpiry > 0 ? Math.min(30_000, untilExpiry + 1) : 30_000);
+    };
+    tick();
+    return () => { active = false; clearTimeout(timer); };
+  }, [account.subscriptionExpiresAt]);
   const state = quotaPresentation(quota, now, pending);
   const windows = state.windows;
   const groups = account.family === "antigravity" ? quotaGroups(windows) : [];
-  const formatDays = (ts: number) => {
-    const d = (ts - Date.now()) / 86400000;
-    return d > 0 ? `${Math.ceil(d)}天后` : "已到期";
-  };
-
+  const membership = membershipExpiry(account.subscriptionExpiresAt, now);
 
 
   return (
@@ -200,9 +210,9 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
       {state.kind !== "fresh" ? (
         <Text testID={"quota-state-" + account.id} style={{ color: quota?.error ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: 11 }}>{state.detail}</Text>
       ) : null}
-      {account.subscriptionExpiresAt && (groups.length || !windows.length) ? (
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-          会员 {formatDays(account.subscriptionExpiresAt)}到期 · {compactDateTime(account.subscriptionExpiresAt)}
+      {membership && (groups.length || !windows.length) ? (
+        <Text testID={`membership-expiry-${account.id}`} accessibilityLabel={membership.detail} style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+          {membership.text} · {membership.date}
         </Text>
       ) : null}
       {groups.length ? (
@@ -245,7 +255,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                       <Text numberOfLines={1} style={{ width: 44, color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 0 }}>{window.title}</Text>
                       {effectiveReset ? (
                         <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 1 }}>
-                          {compactDateTime(effectiveReset)} ({timeUntilReset(effectiveReset, Date.now())})
+                          {compactDateTime(effectiveReset)} ({timeUntilReset(effectiveReset, now)})
                         </Text>
                       ) : null}
                     </View>
@@ -258,12 +268,12 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
         </View>
       ) : windows.length ? (
         windows.map((window, index) => {
-          const showMembership = index === 0 && account.subscriptionExpiresAt;
+          const showMembership = index === 0 && membership;
           return (
             <View key={window.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 18 }}>
               {showMembership ? (
-                <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
-                  会员 {formatDays(account.subscriptionExpiresAt!)}到期
+                <Text testID={`membership-expiry-${account.id}`} accessibilityLabel={showMembership.detail} style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1 }}>
+                  {showMembership.text}
                 </Text>
               ) : windows.length > 1 ? (
                 <Text numberOfLines={1} style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "500", flexShrink: 1 }}>
@@ -276,7 +286,7 @@ export function AccountQuotaDetails({ theme, account, quota, pending }: {
                 const effectiveReset = window.resetAt;
                 return (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, fontVariant: ["tabular-nums"], flexShrink: 0, textAlign: "right" }}>
-                    {compactDateTime(effectiveReset)} 重置 ({timeUntilReset(effectiveReset, Date.now())})
+                    {compactDateTime(effectiveReset)} 重置 ({timeUntilReset(effectiveReset, now)})
                   </Text>
                 );
               })() : null}

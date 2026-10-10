@@ -29,7 +29,7 @@
     "test:hermes": "node tests/hermes-agent-directory.mjs",
     "test:agent-reference": "node tests/browser/run-agent-reference.mjs",
     "test:code-copy": "node tests/browser/run-code-copy.mjs",
-    "test:ui": "node tests/browser/run.mjs && node tests/browser/run-agents-sync.mjs"
+    "test:ui": "node tests/browser/run.mjs && node tests/browser/run-agents-sync.mjs && node tests/browser/run-membership.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

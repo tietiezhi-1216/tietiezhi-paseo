@@ -310,7 +310,8 @@ try {
   await page.evaluate(text => globalThis.__preview.showReply({ text, phase: "complete" }), richMarkdown);
   await reply.getByTestId("tietiezhi-markdown-table").waitFor();
   await reply.getByTestId("tietiezhi-markdown-code").waitFor();
-  assert.equal(await reply.getByRole("button").count(), 0);
+  assert.equal(await reply.getByRole("button", { name: "复制回复", exact: true }).count(), 0);
+  assert.equal(await reply.getByTestId("tietiezhi-code-copy").count(), 1, "中间说明可以复制代码块，但不显示最终回复工具栏");
   const selection = await reply.getByText("优化后的标题", { exact: true }).evaluate(el => {
     const range = document.createRange(); range.selectNodeContents(el);
     const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
