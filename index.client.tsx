@@ -12,6 +12,7 @@ import { AssistantReplySchema, TurnPerformanceSchema } from "./shared/performanc
 import { CompactTool, CompactReasoning } from "./client/activity.tsx";
 import { CompactToolSchema, CompactReasoningSchema } from "./shared/activity.ts";
 import { contributeThinking } from "./client/thinking.tsx";
+import { hasWorkspaceFileLinks } from "./shared/markdown.ts";
 
 export default function contribute(client: PluginClientContext) {
   const stops = [
@@ -80,7 +81,7 @@ export default function contribute(client: PluginClientContext) {
       transform({ item, phase }) {
         if (!item.text.trim()) return undefined;
         // Unsupported rich content stays host-rendered, including its native controls.
-        if (/```mermaid|!\[[^\]]*\]\(/.test(item.text)) return undefined;
+        if (/```mermaid|!\[[^\]]*\]\(/.test(item.text) || hasWorkspaceFileLinks(item.text)) return undefined;
         return { items: [{
           type: "plugin", kind: "assistant-reply", version: 1,
           data: { text: item.text, phase, ...(item.messageId ? { messageId: item.messageId } : {}) },

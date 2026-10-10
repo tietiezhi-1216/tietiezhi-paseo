@@ -43,7 +43,10 @@ export function getPaseoClient(serverId) {
   };
 }
 export async function copyText(text) { state.calls.push({ kind: "copy", text }); }
-export async function openExternalUrl(url) { state.calls.push({ kind: "external", url }); }
+export async function openExternalUrl(url) {
+  state.calls.push({ kind: "external", url });
+  if (globalThis.__testOpenExternalUrls) window.open(url, "_blank", "noopener,noreferrer");
+}
 export function SidebarRow({ id, label, onPress, trailing }) {
   const { theme } = useContext(Runtime);
   return <div style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 40 }}>

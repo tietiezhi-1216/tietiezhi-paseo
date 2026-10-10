@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { Linking, ScrollView, Text, View } from "react-native";
-import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import { Linking, Platform, ScrollView, Text, View, type GestureResponderEvent } from "react-native";
+import { openExternalUrl, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { parseInline, parseMarkdown, type InlineNode, type MarkdownBlock } from "../shared/markdown.ts";
 import { CodeBlock } from "./code-block.tsx";
 
@@ -10,7 +10,18 @@ function Spans({ nodes, theme }: { nodes: InlineNode[]; theme: Theme }) {
   return <>{nodes.map((node, i) => {
     if (node.kind === "text") return node.text;
     if (node.kind === "code") return <Text key={i} selectable style={{ fontFamily: "monospace", fontSize: 13, backgroundColor: theme.colors.surface2, color: theme.colors.foreground }}>{node.text}</Text>;
-    if (node.kind === "link") return <Text key={i} selectable accessibilityRole="link" onPress={() => { void Linking.openURL(node.href).catch(() => {}); }} style={{ color: theme.colors.accent, textDecorationLine: "underline" }}><Spans nodes={node.children} theme={theme} /></Text>;
+    if (node.kind === "link") {
+      // Keep a real anchor for copying URLs and browser context menus, but route
+      // primary activation (including Ctrl/Cmd-click) through Paseo's opener.
+      // Electron can block raw target=_blank navigation even on modified clicks.
+      const webLink = Platform.OS === "web" ? { href: node.href, hrefAttrs: { target: "_blank", rel: "noopener noreferrer" } } : {};
+      const open = (event: GestureResponderEvent) => {
+        event.preventDefault();
+        const action = /^https?:/i.test(node.href) ? openExternalUrl(node.href) : Linking.openURL(node.href);
+        void action.catch(error => console.error("tietiezhi: unable to open Markdown link", error));
+      };
+      return <Text key={i} {...webLink} selectable accessibilityRole="link" onPress={open} style={{ color: theme.colors.statusSuccess, textDecorationLine: "underline" }}><Spans nodes={node.children} theme={theme} /></Text>;
+    }
     if ("children" in node) return <Text key={i} selectable style={{ fontWeight: node.kind === "strong" ? "700" : undefined, fontStyle: node.kind === "em" ? "italic" : undefined, textDecorationLine: node.kind === "strike" ? "line-through" : undefined }}><Spans nodes={node.children} theme={theme} /></Text>;
     return null;
   })}</>;

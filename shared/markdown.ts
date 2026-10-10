@@ -44,6 +44,39 @@ export function parseInline(text: string, depth = 0): InlineNode[] {
   return nodes;
 }
 
+/** File navigation belongs to Paseo: plugins lack the native workspace file opener.
+ * Inspect prose only so examples inside code do not change reply ownership.
+ */
+export function hasWorkspaceFileLinks(text: string): boolean {
+  const proseHasLink = (value: string): boolean => {
+    for (let i = 0; i < value.length;) {
+      if (value[i] === "\\") { i += 2; continue; }
+      const code = /^(`+)([\s\S]*?)\1(?!`)/.exec(value.slice(i));
+      if (code) { i += code[0].length; continue; }
+      const link = /^\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|([^\s)]+))/.exec(value.slice(i));
+      if (link) {
+        const href = link[2] ?? link[3];
+        // Keep unsafe/custom URI schemes inert; do not turn them into URLs.
+        const windowsPath = /^[a-z]:[\\/]/i.test(href);
+        if (windowsPath || /^file:/i.test(href)
+          || (!/^[a-z][a-z\d+.-]*:/i.test(href) && !href.startsWith("#") && !href.startsWith("//"))) return true;
+        i += link[0].length;
+      } else i++;
+    }
+    return false;
+  };
+  const visit = (blocks: MarkdownBlock[]): boolean => blocks.some(block => {
+    switch (block.kind) {
+      case "paragraph": case "heading": return proseHasLink(block.text);
+      case "quote": return visit(block.blocks);
+      case "list": return block.items.some(item => visit(item.blocks));
+      case "table": return block.rows.some(row => row.some(proseHasLink));
+      default: return false;
+    }
+  });
+  return visit(parseMarkdown(text));
+}
+
 /** Split pipes outside code spans; escaped pipes remain part of their cell. */
 export function tableCells(line: string): string[] {
   let value = line.trim();

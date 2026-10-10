@@ -45,6 +45,8 @@ try {
       ordinaryTools: transformers.filter(item => item.query.itemType === "tool_call").map(item => item.transform({
         item: { type: "tool_call", callId: "ordinary-read", name: "Read", status: "completed", error: null, detail: { type: "read", filePath: "src/example.ts" } }, phase: "complete",
       }) ?? null),
+      fileReplies: ["streaming", "complete"].map(phase => assistant.transform({ item: { type: "assistant_message", text: "[完整 ID、名称及差异清单](.worktrees/slot-full-capture/exports/README.md)", messageId: "file-reply" }, phase }) ?? null),
+      webReply: assistant.transform({ item: { type: "assistant_message", text: "[源码](https://example.com)", messageId: "web-reply" }, phase: "complete" }),
       kinds: renderers.map(item => item.kind),
       reasoning: reasoning.transform({ item: { type: "reasoning", text: "Inspect source" }, phase: "streaming" }),
       history: reasoning.transform({ item: { type: "reasoning", text: "Inspect source" }, phase: "complete" }),
@@ -58,6 +60,8 @@ try {
   assert.equal(registrations.reasoning.items[0].data.text, "Inspect source");
   assert.deepEqual(registrations.assistant.items[0].data, { text: "Visible reply", phase: "complete", messageId: "reply-1" });
   assert.equal(registrations.kinds.includes("assistant-reply"), true);
+  assert.deepEqual(registrations.fileReplies, [null, null], "file links stay native in streaming and history, retaining workspace navigation");
+  assert.equal(registrations.webReply.items[0].kind, "assistant-reply", "ordinary web links keep custom Markdown");
   await page.evaluate(() => globalThis.__preview.stopPlugin());
   assert.deepEqual(await page.evaluate(() => ({
     transformers: globalThis.__preview.timelineRegistrations.transformers.length,

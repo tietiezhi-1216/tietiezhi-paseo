@@ -327,6 +327,26 @@ try {
   await page.screenshot({ path: join(root, ".artifacts/ui/markdown-rich-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: join(root, ".artifacts/ui/markdown-rich-mobile.png") });
+  // Real anchor semantics plus the public host opener (mocked for this browser).
+  await page.evaluate(() => globalThis.__preview.showReply({ text: "[源码与安装包](https://example.com/tietiezhi-link-test)", phase: "complete" }));
+  const markdownLink = reply.getByRole("link", { name: "源码与安装包" });
+  await markdownLink.waitFor();
+  assert.equal(await markdownLink.evaluate(el => el.tagName), "A");
+  assert.equal(await markdownLink.getAttribute("href"), "https://example.com/tietiezhi-link-test");
+  assert.equal(await markdownLink.getAttribute("target"), "_blank");
+  assert.equal(await markdownLink.getAttribute("rel"), "noopener noreferrer");
+  await page.context().route("https://example.com/tietiezhi-link-test", route => route.fulfill({ contentType: "text/html", body: "Link destination" }));
+  await page.evaluate(() => { globalThis.__testOpenExternalUrls = true; });
+  const chatUrl = page.url();
+  for (const mode of ["click", "middle", "modified", "keyboard"]) {
+    const opened = page.context().waitForEvent("page");
+    if (mode === "keyboard") { await markdownLink.focus(); await page.keyboard.press("Enter"); }
+    else await markdownLink.click(mode === "middle" ? { button: "middle" } : mode === "modified" ? { modifiers: [process.platform === "darwin" ? "Meta" : "Control"] } : {});
+    const tab = await opened;
+    await tab.waitForURL("https://example.com/tietiezhi-link-test");
+    assert.equal(page.url(), chatUrl, `${mode} must not navigate away from chat`);
+    await tab.close();
+  }
   await page.evaluate(() => { globalThis.__preview.showReply(null); globalThis.__preview.showActivity(true); });
   const tool = page.getByTestId("tietiezhi-compact-tool");
   assert.equal(await tool.getByText("完整工具输出", { exact: false }).count(), 0);
