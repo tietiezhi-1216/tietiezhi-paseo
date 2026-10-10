@@ -42,6 +42,18 @@ test("remote terminal diagnostic creates/writes/captures/cleans only its own ter
   assert.match(input, /\/bin\/sleep 45; exit/);
 });
 
+test("Pi inventory uses only an existing workspace and reassembles soft-wrapped JSON", async () => {
+  const f = fixture();
+  f.terminal.capture = async () => ({ terminalId: "owned", requestId: "capture", totalLines: 4, lines: [
+    `TIETIEZHI-BEGIN:${job.requestId}`, '{"plugin":{"installed":tr', 'ue},"accountCount":6}', `TIETIEZHI-END:${job.requestId}`,
+  ] });
+  const api = { ...f.api, workspaces: { async list() { return { entries: [{ id: "workspace" }] }; } } };
+  const result = await runTerminalProbe({ ...job, workspaceId: "auto", kind: "pi-antigravity" }, () => api as any, new AbortController().signal);
+  assert.equal(result.state, "completed"); assert.equal(result.cleanedUp, true);
+  assert.equal(f.calls.find(call => call[0] === "create")[1].workspaceId, "workspace");
+  assert.deepEqual(JSON.parse(result.output), { plugin: { installed: true }, accountCount: 6 });
+});
+
 test("input failure still cleans its newly created terminal; existing terminal never touched", async () => {
   const f = fixture(); f.terminal.write = () => { throw Error("transport sensitive error"); };
   const result = await runTerminalProbe(job, () => f.api as any, new AbortController().signal);

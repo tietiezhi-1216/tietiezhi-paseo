@@ -22,7 +22,7 @@ import { requestTerminalProbe, pendingTerminalProbes, claimTerminalProbe, report
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
   const terminalProbes = createTerminalProbeBroker();
-  server.handle(requestTerminalProbe, ({ serverId, workspaceId }) => terminalProbes.request(serverId, workspaceId));
+  server.handle(requestTerminalProbe, ({ serverId, workspaceId, kind }) => terminalProbes.request(serverId, workspaceId, kind));
   server.handle(pendingTerminalProbes, () => terminalProbes.pending());
   server.handle(claimTerminalProbe, ({ requestId, claimant }) => terminalProbes.claim(requestId, claimant));
   server.handle(reportTerminalProbe, ({ claimant, result }) => terminalProbes.report(claimant, result));

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const TerminalProbeRequestSchema = z.object({
   requestId: z.uuid(), serverId: z.string().min(1).max(200), workspaceId: z.string().min(1).max(200),
+  kind: z.enum(["system", "pi-antigravity"]).optional(),
 });
 export const TerminalProbeResultSchema = TerminalProbeRequestSchema.extend({
   state: z.enum(["pending", "running", "completed", "failed", "expired"]),
@@ -12,7 +13,7 @@ export const TerminalProbeResultSchema = TerminalProbeRequestSchema.extend({
 export type TerminalProbeRequest = z.infer<typeof TerminalProbeRequestSchema>;
 export type TerminalProbeResult = z.infer<typeof TerminalProbeResultSchema>;
 export const requestTerminalProbe = defineRpc({
-  name: "terminals.probe.request", input: z.object({ serverId: z.string().min(1).max(200), workspaceId: z.string().min(1).max(200) }),
+  name: "terminals.probe.request", input: z.object({ serverId: z.string().min(1).max(200), workspaceId: z.string().min(1).max(200), kind: z.enum(["system", "pi-antigravity"]).optional() }),
   output: z.object({ requestId: z.uuid() }),
 });
 export const pendingTerminalProbes = defineRpc({

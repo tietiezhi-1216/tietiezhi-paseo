@@ -180,6 +180,8 @@ node server/query-agent-cli.mjs --server-id srv_3p-XJb39DOTY --agent-id 61037014
 
 复用 App 的已连接 Host，`terminals.probe.request` 接收明确的 `serverId` 和 `workspaceId`。App 原生终端 SDK 先列举该工作区终端，再创建独立非交互 `/bin/sh /dev/stdin` 测试终端，写入固定的主机名／系统／目录查询，捕获实际输出并关闭仅此次新建的终端。已有终端不会收到输入或关闭操作。多客户端通过一次性 claim 避免重复执行，不接受自定义命令或已有 terminalId。
 
+此外支持固定的 `kind: "pi-antigravity"` 只读检查：在目标设备本地解析 Pi 配置、已安装包和账号记录，仅返回插件版本、账号数量、掩码邮箱与凭据结构状态，不返回 token／密钥，不登录或切换账号。此检查可用 `workspaceId: "auto"` 选择该 Host 已有工作区作为临时终端容器；没有工作区就失败，不自动创建工作区。账号记录完整不等于 OAuth 当前有效，也不证明正在运行的 Pi 会话已重载插件。
+
 这是真实终端的固定安全诊断入口，不是任意远程 Shell 工具。若 App 未连接或诊断超时，返回失败／过期，不回退到其他设备；关闭未确认时保留测试终端 ID 并报告错误。测试命令含 45 秒自动退出兜底。实际复用已连接设备不需要复制密码、SSH 或在目标设备另装插件。
 
 ## 开发与验证
