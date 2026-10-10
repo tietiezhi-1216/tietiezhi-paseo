@@ -32,6 +32,8 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.getByTestId("agents-pill-label").getByText("插件开发 · done · 1", { exact: true }).waitFor();
     await page.getByTestId("agents-pill").click();
+    // Let the popover's 50/150 ms search-focus effects settle before a held touch.
+    await page.waitForTimeout(250);
     const copy = page.getByRole("button", { name: "复制 Agent 引用 completed", exact: true });
     await copy.click();
     assert.equal(await page.evaluate(() => globalThis.__agentReferenceClipboard),
@@ -40,7 +42,7 @@ try {
       const bounds = await copy.boundingBox();
       const session = await page.context().newCDPSession(page);
       await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }] });
-      await page.waitForTimeout(650);
+      await page.waitForFunction(() => globalThis.__agentReferenceClipboard === "completed", null, { timeout: 3000 });
       await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       assert.equal(await page.evaluate(() => globalThis.__agentReferenceClipboard), "completed", "touch long press copies only the raw Agent ID");
       await session.detach();

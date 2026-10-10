@@ -16,9 +16,17 @@ import { forkReply } from "./shared/fork.ts";
 import { createReplyFork } from "./server/fork.ts";
 import { createAgentProbeBroker } from "./server/agent-probe.ts";
 import { requestAgentProbe, pendingAgentProbes, reportAgentProbe, collectAgentProbe } from "./shared/agent-probe.ts";
+import { createTerminalProbeBroker } from "./server/terminal-probe.ts";
+import { requestTerminalProbe, pendingTerminalProbes, claimTerminalProbe, reportTerminalProbe, collectTerminalProbe } from "./shared/terminal-probe.ts";
 
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
+  const terminalProbes = createTerminalProbeBroker();
+  server.handle(requestTerminalProbe, ({ serverId, workspaceId }) => terminalProbes.request(serverId, workspaceId));
+  server.handle(pendingTerminalProbes, () => terminalProbes.pending());
+  server.handle(claimTerminalProbe, ({ requestId, claimant }) => terminalProbes.claim(requestId, claimant));
+  server.handle(reportTerminalProbe, ({ claimant, result }) => terminalProbes.report(claimant, result));
+  server.handle(collectTerminalProbe, ({ requestId }) => terminalProbes.collect(requestId));
   const probes = createAgentProbeBroker();
   server.handle(requestAgentProbe, ({ agentId, serverId }) => probes.request(agentId, serverId));
   server.handle(pendingAgentProbes, () => probes.pending());
@@ -64,6 +72,7 @@ export default function contribute(server: PluginServerContext) {
   return async () => {
     lifetime.abort();
     probes.dispose();
+    terminalProbes.dispose();
     quotas.stop();
     await login.dispose();
     await closeRemoteAgentClients();
