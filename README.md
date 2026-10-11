@@ -185,6 +185,27 @@ node server/query-agent-cli.mjs --server-id srv_3p-XJb39DOTY --agent-id 61037014
 
 这是真实终端的固定安全诊断入口，不是任意远程 Shell 工具。若 App 未连接或诊断超时，返回失败／过期，不回退到其他设备；关闭未确认时保留测试终端 ID 并报告错误。测试命令含 45 秒自动退出兜底。实际复用已连接设备不需要复制密码、SSH 或在目标设备另装插件。
 
+## 发布记录（GitHub118 集成）
+
+在「铁铁汁」管理页打开新增的「发布记录」tab：
+
+- GIT / SVN 切换最近 24 小时历史：PR 编号倒序、SVN 修订与真实作者、分类、完整标题、分支、批次及失败原因；点击记录展开详情，再打开系统浏览器。手机不依赖 hover。
+- GitHub 与 SVN/Jenkins 活跃部署同时展示在历史上方；构建、安装、验证阶段、排队 Q 编号与并发 job 保留，切换渠道不隐藏部署。
+- 118 生产 receipt、累计发布覆盖、无需运行时发布与发布范围待核验沿用原判定；站点异常不改变历史发布结论。
+- 计时从真实 runner / Jenkins 开始，排队单列。只有同类成功样本才提供估时、总剩余和最多 95% 的未完成进度；无样本显示待估算与实际已用时间，超时显示超出时间。
+- 点击「最近…」一行查看完整发布时间和成功样本数。GitHub 统计最多 10 个成功 workflow，Jenkins 每个 job 最多 100 个构建样本。
+- 活跃／失败时 15 秒、空闲时 60 秒同步；已有 GitHub relay 唤醒通过 5 秒轻量 revision 查询传达给面板，后端 12 秒限流、请求单飞、35 秒总截止。relay 只建一个连接，25 秒 ping/pong 检测并退避重连；面板不再查询后最多 120 秒关闭 relay。
+- 断线或读取失败保留旧数据，95 秒旧观测及失败不显示站点健康或继续假装活跃进度。SVN/Jenkins 局部失败保留各自历史并显示警告。新记录提示、渠道选择与已读时间通过宿主设置持久化（同一 Host 的授权客户端共享）。
+- RPC、查询缓存和设置均绑定当前 Host；不静默回退到本机或其他设备。
+
+后端直接使用当前 daemon 上的既有 `gh` 授权、SVN 工作区与 Jenkins 配置。默认项目根目录是 `~/projects/SlotGame`，可用 `SLOTGAME_ROOT` 指定；读取 `SECRET.md` 中「对接方 SVN」的 CHECKOUT 与「对接方 Jenkins」配置。relay 仅在后端读取既有 `~/Library/Application Support/GitHub118/relay.json` 或 `~/.paseo/slotgame-release-relay.json`，凭证不进入客户端、快照或日志。继承环境及 macOS 系统 HTTP/HTTPS 代理。
+
+为兼容现有私有 SVN，沿用 GitHub118 的 `--trust-server-cert-failures` 读取策略（包括未知 CA、名称不匹配等）；它只作用于本次 `svn log`，不修改全局 SVN 配置。此兼容策略会放宽该次连接的证书校验，不应视为额外安全验证。全部操作为查询；不合并 PR、不提交 SVN、不触发 Jenkins 或生产部署。插件仅写自身 `~/.paseo/tietiezhi/release-snapshot.json` 和独立元数据缓存，不写原 App 的缓存或配置。
+
+业务源码已经移入本仓库，无需原 App 运行，也不在运行时依赖相邻仓库源码。macOS 窗口吸附、Dock/Space 可见性和原生窗口宽度记忆属于独立 App，不搬入跨平台插件；原 App 的定时 git fetch/解出快照脚本也不需要照搬，因为插件后端已内置该逻辑。
+
+验证：`npm run test:release`（业务、relay 生命周期、错误脱敏与缓存回归）；`npm run test:release-ui`（桌面／触屏模拟 RPC，非原生 App 验收）。
+
 ## 代码块复制
 
 Markdown 代码块和 fenced text 块的右上角有常驻「复制」按钮，桌面与手机均可直接点击。仅复制块内原文，不包含语言标签、围栏或整条回复；换行和缩进保留。复制成功显示「已复制」，失败可重试；流式内容变化时不会把旧内容的复制结果显示为新内容已复制。使用宿主剪贴板 API，不读取或修改 DOM。
@@ -206,7 +227,7 @@ Markdown 代码块和 fenced text 块的右上角有常驻「复制」按钮，�
 - `shared/`：Zod RPC 契约、状态分类和纯函数。
 - `tests/`：隔离文件测试、Host 路由测试、模拟浏览器 UI。
 
-完整计划见 [todo.md](todo.md)。旧插件功能基线来自 [paseo-plugins](https://github.com/tietiezhi-1216/paseo-plugins)，提交 `6638f2670dbb2886aeb3f5396f49b09754cb78c9`。不引入 `slotgame-release` 功能。
+完整计划见 [todo.md](todo.md)。旧插件功能基线来自 [paseo-plugins](https://github.com/tietiezhi-1216/paseo-plugins)，提交 `6638f2670dbb2886aeb3f5396f49b09754cb78c9`。发布记录面板另外移植了 `SlotGame/tools/paseo/slotgame-release` 的判定逻辑，与 `tools/macos/GitHub118` 的桌面面板保持同一业务口径。
 
 参考：[插件文档](https://paseo.sh/docs/plugins/reference.md) · [SDK](https://paseo.sh/docs/sdk/reference.md) · [连接方式](https://paseo.sh/docs/connectivity.md)
 

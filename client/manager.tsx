@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useHosts, type PluginScreenProps, type PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { AccountsPanel } from "./accounts.tsx";
+import { ReleaseSurface } from "./release.tsx";
 import { LoginPanel } from "./login.tsx";
 import { PiManagerPanel } from "./pi-manager.tsx";
 import { PerformanceDashboard } from "./performance.tsx";
@@ -28,7 +29,7 @@ function ManagerBody(props: PluginScreenProps) {
   const { theme, host, layout } = props;
   const hosts = useHosts();
   const online = hosts.some((entry) => entry.serverId === host.id && entry.status === "online");
-  const [tab, setTab] = useState<"accounts" | "plugins" | "performance">("accounts");
+  const [tab, setTab] = useState<"accounts" | "plugins" | "performance" | "release">("accounts");
   const [login, setLogin] = useState<Family | null>(null);
 
   return (
@@ -63,6 +64,7 @@ function ManagerBody(props: PluginScreenProps) {
             backgroundColor: theme.colors.surface1,
             borderRadius: 7,
             padding: 3,
+            flexWrap: "wrap",
             borderWidth: 1,
             borderColor: hexAlpha(theme.colors.border, 0.6),
           }}
@@ -130,10 +132,17 @@ function ManagerBody(props: PluginScreenProps) {
               ⚡ 模型测速
             </Text>
           </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="发布记录" onPress={() => { setTab("release"); setLogin(null); }}
+            style={{ paddingVertical: 5, paddingHorizontal: 16, borderRadius: 5,
+              backgroundColor: tab === "release" ? hexAlpha(theme.colors.foreground, 0.08) : "transparent" }}>
+            <Text style={{ color: tab === "release" ? theme.colors.foreground : theme.colors.foregroundMuted,
+              fontSize: 12, fontWeight: tab === "release" ? "600" : "400" }}>发布记录</Text>
+          </Pressable>
         </View>
 
         {/* Right Actions: Add Account & Device Badge */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {tab === "release" ? <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>SlotGame · {host.label || host.id}</Text> : null}
           {tab === "accounts" ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               {(["codex", "xai", "antigravity"] as const).map((fam) => (
@@ -170,7 +179,9 @@ function ManagerBody(props: PluginScreenProps) {
       </View>
 
       {/* Body Area */}
-      {tab === "performance" ? (
+      {tab === "release" ? (
+        <View style={{ minHeight: 460, height: layout.compact ? 600 : 720 }}><ReleaseSurface {...props} /></View>
+      ) : tab === "performance" ? (
         <PerformanceDashboard {...props} />
       ) : tab === "plugins" ? (
         <PiManagerPanel {...props} />

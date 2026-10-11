@@ -1,4 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { handleReleaseSnapshot, releaseHeartbeat, disposeReleaseSnapshot } from "./server/release.ts";
+import { releaseSnapshot, releasePulse, releasePreferences } from "./shared/release.ts";
 import { PiManager } from "./server/pi-manager.ts";
 import { piInventory, piPackageChange } from "./shared/pi-manager.ts";
 import { AccountService } from "./server/accounts.ts";
@@ -21,6 +23,9 @@ import { requestTerminalProbe, pendingTerminalProbes, claimTerminalProbe, report
 
 export default function contribute(server: PluginServerContext) {
   const lifetime = new AbortController();
+  server.registerSettings(releasePreferences);
+  server.handle(releaseSnapshot, handleReleaseSnapshot);
+  server.handle(releasePulse, releaseHeartbeat);
   const terminalProbes = createTerminalProbeBroker();
   server.handle(requestTerminalProbe, ({ serverId, workspaceId, kind }) => terminalProbes.request(serverId, workspaceId, kind));
   server.handle(pendingTerminalProbes, () => terminalProbes.pending());
@@ -74,6 +79,7 @@ export default function contribute(server: PluginServerContext) {
     probes.dispose();
     terminalProbes.dispose();
     quotas.stop();
+    await disposeReleaseSnapshot();
     await login.dispose();
     await closeRemoteAgentClients();
   };

@@ -1,5 +1,11 @@
 # Third-party notices
 
+The release board business logic and initial React Native presentation are adapted from
+`tietiezhi-1216/SlotGame`, `tools/paseo/slotgame-release` and
+`tools/macos/GitHub118`, based on revision
+`773a2df2303273e1c9eaa3907d23a881f40d455b`. The copied business regression tests
+are retained. Platform window-management code, credentials, and caches are not copied.
+
 The quota endpoint adapters and Pi quota UX build on the model-quota functionality in
 [tietiezhi-1216/paseo-plugins](https://github.com/tietiezhi-1216/paseo-plugins),
 revision `6638f2670dbb2886aeb3f5396f49b09754cb78c9`. The upstream MIT notice follows.
