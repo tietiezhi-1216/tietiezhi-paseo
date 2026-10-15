@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { findPackageJSON } from "node:module";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { AccountService, defaultAccountPaths } from "./accounts.ts";
+import { resolveLoginModulePath } from "./login-module.ts";
 import type { LoginFamily, LoginState } from "../shared/login.ts";
 
 type Interaction = {
@@ -149,13 +146,15 @@ const antigravityOAuthFlow: OAuthFlow = {
 export async function loadLoginFlow(family: LoginFamily): Promise<OAuthFlow> {
   if (family === "antigravity") return antigravityOAuthFlow;
   try {
-    const oauthUrl = import.meta.resolve("@earendil-works/pi-ai/oauth");
-    const targetUrl = new URL(`auth/oauth/${family === "codex" ? "openai-codex.js" : "xai.js"}`, oauthUrl);
-    const module = await import(targetUrl.href);
-    return family === "codex" ? module.openaiCodexOAuth : module.xaiOAuth;
+    const file = await resolveLoginModulePath(family);
+    const module = await import(pathToFileURL(file).href);
+    const flow = family === "codex" ? module.openaiCodexOAuth : module.xaiOAuth;
+    if (!flow || typeof flow.login !== "function") throw new Error("登录模块缺少 OAuth 入口");
+    return flow;
   } catch (err: unknown) {
-    console.error(`[LOAD LOGIN FLOW ERROR for ${family}]`, err);
-    throw new Error(`登录模块加载失败: ${err instanceof Error ? err.message : String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[LOAD LOGIN FLOW ERROR for ${family}]`, message);
+    throw new Error(`登录模块加载失败: ${message.replace(/\s+/g, " ").slice(0, 160)}`);
   }
 }
 
