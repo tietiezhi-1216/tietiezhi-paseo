@@ -16,6 +16,8 @@ import { PerformanceService } from "./server/performance.ts";
 import { getModelPerformance, getAgentTurnPerformance } from "./shared/performance.ts";
 import { forkReply } from "./shared/fork.ts";
 import { createReplyFork } from "./server/fork.ts";
+import { exportSyncBundle, importSyncBundle } from "./shared/sync.ts";
+import { SyncService } from "./server/sync.ts";
 import { createAgentProbeBroker } from "./server/agent-probe.ts";
 import { requestAgentProbe, pendingAgentProbes, reportAgentProbe, collectAgentProbe } from "./shared/agent-probe.ts";
 import { createTerminalProbeBroker } from "./server/terminal-probe.ts";
@@ -62,6 +64,9 @@ export default function contribute(server: PluginServerContext) {
   server.handle(listAccounts, () => new AccountService().list());
   server.handle(switchAccount, (input) => new AccountService().switch(input, lifetime.signal));
   server.handle(deleteAccount, (input) => new AccountService().delete(input, lifetime.signal));
+  const sync = new SyncService(() => new AccountService());
+  server.handle(exportSyncBundle, (input) => sync.exportBundle(input));
+  server.handle(importSyncBundle, (input) => sync.importBundle(input, lifetime.signal));
   server.handle(agentActivity, (input) => handleAgentActivity(input));
   server.handle(agentReload, (input, { paseo }) => reloadRemoteAgent(input, paseo));
   server.handle(agentArchive, (input, context) => archiveRemoteAgent(input, context.paseo));

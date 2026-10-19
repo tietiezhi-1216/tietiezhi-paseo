@@ -108,6 +108,33 @@ test("xAI/Go 缺失比例不当成 0，Antigravity 仅只读查询不 onboard/�
   assert.doesNotMatch(urls.join("\n"), /onboard|oauth|token/);
   assert.equal(safeQuotaError(new Error("secret-refresh-ABC")), "额度查询失败或网络超时；保留上次结果");
 });
+test("Antigravity 在 retrieveUserQuotaSummary 仅返回 Claude 时，自动从 fetchAvailableModels 补充 Gemini 额度", async () => {
+  const ag = await fetchProviderQuota("antigravity", { ...cred("G"), projectId: "fake-project" }, async (url) => {
+    if (String(url).includes("retrieveUserQuotaSummary")) {
+      return new Response(JSON.stringify({
+        groups: [
+          {
+            displayName: "Claude and GPT models",
+            buckets: [
+              { bucketId: "3p-5h", displayName: "5 Hour Limit", window: "5h", remainingFraction: 0.8, resetTime: "2030-01-01T05:00:00Z" }
+            ]
+          }
+        ]
+      }));
+    }
+    return new Response(JSON.stringify({
+      models: {
+        "gemini-3.8-flash-tiered": {
+          quotaInfo: { remainingFraction: 0.9, resetTime: "2030-01-01T05:00:00Z" }
+        }
+      }
+    }));
+  }, new AbortController().signal);
+  assert.equal(ag.windows.length, 2);
+  assert.ok(ag.windows.some((w) => w.pool === "claude"));
+  assert.ok(ag.windows.some((w) => w.pool === "gemini"));
+  assert.equal(Math.round(selectQuotaWindow("antigravity", "gemini", ag.windows)!.usedPercent), 10);
+});
 test("插件停止取消额度请求，命令形式 Key 不执行也不发送", async () => {
   let called = false;
   await assert.rejects(fetchProviderQuota("go", { key: "!secret-command" }, async () => { called = true; return response(); }, new AbortController().signal), /停用/);

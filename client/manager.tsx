@@ -7,6 +7,7 @@ import { ReleaseSurface } from "./release.tsx";
 import { LoginPanel } from "./login.tsx";
 import { PiManagerPanel } from "./pi-manager.tsx";
 import { PerformanceDashboard } from "./performance.tsx";
+import { SyncPanel } from "./sync.tsx";
 import { hexAlpha } from "./ui.tsx";
 import type { Family } from "../shared/accounts.ts";
 
@@ -29,7 +30,7 @@ function ManagerBody(props: PluginScreenProps) {
   const { theme, host, layout } = props;
   const hosts = useHosts();
   const online = hosts.some((entry) => entry.serverId === host.id && entry.status === "online");
-  const [tab, setTab] = useState<"accounts" | "plugins" | "performance" | "release">("accounts");
+  const [tab, setTab] = useState<"accounts" | "plugins" | "sync" | "performance" | "release">("accounts");
   const [login, setLogin] = useState<Family | null>(null);
 
   return (
@@ -113,6 +114,27 @@ function ManagerBody(props: PluginScreenProps) {
           </Pressable>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="跨设备同步"
+            onPress={() => { setTab("sync"); setLogin(null); }}
+            style={{
+              paddingVertical: 5,
+              paddingHorizontal: 16,
+              borderRadius: 5,
+              backgroundColor: tab === "sync" ? hexAlpha(theme.colors.foreground, 0.08) : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                color: tab === "sync" ? theme.colors.foreground : theme.colors.foregroundMuted,
+                fontSize: 12,
+                fontWeight: tab === "sync" ? "600" : "400",
+              }}
+            >
+              🔄 跨设备同步
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="模型测速"
             onPress={() => { setTab("performance"); setLogin(null); }}
             style={{
@@ -181,6 +203,8 @@ function ManagerBody(props: PluginScreenProps) {
       {/* Body Area */}
       {tab === "release" ? (
         <View style={{ minHeight: 460, height: layout.compact ? 600 : 720 }}><ReleaseSurface {...props} /></View>
+      ) : tab === "sync" ? (
+        <SyncPanel {...props} />
       ) : tab === "performance" ? (
         <PerformanceDashboard {...props} />
       ) : tab === "plugins" ? (

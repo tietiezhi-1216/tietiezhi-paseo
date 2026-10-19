@@ -166,7 +166,10 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
       for (const base of ["https://daily-cloudcode-pa.googleapis.com", "https://cloudcode-pa.googleapis.com"]) {
         try {
           return await request(`${base}/v1internal:${action}`, {
-            method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "antigravity/1.23.2" },
+            method: "POST", headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "antigravity/cli/1.2.4 (aidev_client; os_type=linux; arch=amd64; cl=982146307; auth_method=consumer)",
+            },
             body: JSON.stringify(payload),
           });
         } catch (e) { last = e; if (signal.aborted) break; }
@@ -205,8 +208,10 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
       }
     }
 
-    // Fallback to fetchAvailableModels if summary is empty.
-    if (!windows.length) {
+    // Supplement from fetchAvailableModels for any pool missing from summary (e.g. Gemini, which upstream omits from retrieveUserQuotaSummary).
+    const hasGemini = windows.some((w) => w.pool === "gemini");
+    const hasClaude = windows.some((w) => w.pool === "claude");
+    if (!hasGemini || !hasClaude) {
       for (const [name, value] of Object.entries(rec(available.models)).slice(0, 100)) {
         const model = rec(value), quota = rec(model.quotaInfo);
         const remaining = num(quota.remainingFraction);
@@ -214,6 +219,8 @@ export async function fetchProviderQuota(family: Family, credential: Rec, fetche
         const identity = `${name} ${text(model.modelProvider)}`;
         const pool = /gemini/i.test(identity) ? "gemini" : /claude|anthropic|gpt-oss/i.test(identity) ? "claude" : null;
         if (!pool) continue;
+        if (pool === "gemini" && hasGemini) continue;
+        if (pool === "claude" && hasClaude) continue;
         const w = normalizeWindow(`${pool}-${windows.length}`, pool === "gemini" ? "Gemini" : "Claude / GPT-OSS", (1 - remaining) * 100, quota.resetTime, pool);
         if (w) windows.push(w);
       }

@@ -232,6 +232,132 @@ export class AccountService {
     await this.pruneBackups().catch(() => {});
   }
 
+  async exportCandidates(): Promise<Candidate[]> {
+    const registry = await this.registry();
+    return registry.accounts;
+  }
+
+  async importAccounts(
+    incoming: Array<{
+      id?: string;
+      family: Family;
+      slot?: string;
+      label?: string;
+      credential: RecordValue;
+      plan?: string | null;
+      subscriptionExpiresAt?: number | null;
+      active?: boolean;
+    }>,
+    strategy: "merge" | "overwrite" = "merge",
+    signal?: AbortSignal,
+  ): Promise<{ importedCount: number; updatedCount: number; families: string[] }> {
+    checkAbort(signal);
+    await mkdir(dirname(this.paths.auth), { recursive: true, mode: 0o700 });
+    await writeFile(this.paths.auth, "{}\n", { flag: "wx", mode: 0o600 }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new Error("无法创建 Pi 授权文件");
+    });
+    const stat = await lstat(this.paths.auth);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Pi 授权文件不可安全使用");
+    let compromised = false;
+    const release = await lockfile.lock(this.paths.auth, {
+      realpath: false, stale: 30_000, retries: { retries: 4, minTimeout: 50, maxTimeout: 250 },
+      onCompromised() { compromised = true; },
+    }).catch(() => { throw new Error("账号文件正在更新，请稍后重试"); });
+
+    try {
+      const registry = await this.registry();
+      const accountsMap = new Map<string, Candidate>(
+        strategy === "overwrite" ? [] : registry.accounts.map((a) => [a.id, a]),
+      );
+      let importedCount = 0;
+      let updatedCount = 0;
+      const affectedFamilies = new Set<string>();
+
+      const usedSlots = new Set<string>();
+      for (const a of accountsMap.values()) usedSlots.add(a.slot);
+      for (const slot of Object.keys(registry.auth.value)) usedSlots.add(slot);
+
+      for (const item of incoming) {
+        if (!item.family || !item.credential || typeof item.credential !== "object") continue;
+        const id = identity(item.family, item.credential);
+        affectedFamilies.add(item.family);
+        const existing = accountsMap.get(id);
+
+        if (existing) {
+          if (strategy === "overwrite" || (number(item.credential.expires) ?? 0) >= (number(existing.credential.expires) ?? 0)) {
+            accountsMap.set(id, {
+              ...existing,
+              credential: item.credential,
+              label: item.label ?? existing.label,
+              plan: item.plan ?? existing.plan,
+              subscriptionExpiresAt: item.subscriptionExpiresAt ?? existing.subscriptionExpiresAt,
+            });
+            updatedCount++;
+          }
+        } else {
+          let slot = item.slot || LIVE_SLOTS[item.family];
+          if (usedSlots.has(slot)) {
+            let index = 2;
+            const prefix = item.family === "antigravity" ? "antigravity-account-" : item.family === "codex" ? "openai-codex-account-" : "xai-account-";
+            while (usedSlots.has(`${prefix}${index}`)) index++;
+            slot = `${prefix}${index}`;
+          }
+          usedSlots.add(slot);
+
+          accountsMap.set(id, {
+            id,
+            family: item.family,
+            slot,
+            label: item.label ?? accountEmail(item.credential) ?? `${FAMILY_LABELS[item.family]} · ${slot}`,
+            credential: item.credential,
+            plan: item.plan ?? null,
+            subscriptionExpiresAt: item.subscriptionExpiresAt ?? null,
+          });
+          importedCount++;
+        }
+      }
+
+      const authObj = { ...registry.auth.value };
+      let authModified = false;
+      for (const family of ["antigravity", "codex", "xai"] as const) {
+        const liveSlot = LIVE_SLOTS[family];
+        const existingLive = record(authObj[liveSlot]);
+        if (!Object.keys(existingLive).length) {
+          const cand = [...accountsMap.values()].find((a) => a.family === family && (incoming.find((i) => i.id === a.id)?.active || true));
+          if (cand && Object.keys(cand.credential).length) {
+            authObj[liveSlot] = cand.credential;
+            authModified = true;
+          }
+        }
+      }
+
+      if (registry.archive.content !== null) await this.backup(this.paths.archive, "accounts");
+      if (authModified && registry.auth.content !== null) await this.backup(this.paths.auth, "auth");
+
+      checkAbort(signal);
+      if (compromised) throw new Error("账号文件锁已失效，未保存");
+
+      await this.atomicWrite(this.paths.archive, {
+        ...registry.archive.value,
+        version: 1,
+        accounts: [...accountsMap.values()],
+      });
+
+      if (authModified) {
+        await this.atomicWrite(this.paths.auth, authObj);
+      }
+
+      return {
+        importedCount,
+        updatedCount,
+        families: [...affectedFamilies],
+      };
+    } finally {
+      await release().catch(() => {});
+      await this.pruneBackups().catch(() => {});
+    }
+  }
+
   /** Server-only input for read-only quota queries. Never register this method directly as an RPC. */
   async quotaCredentials(family: Family, slot: string) {
     if (familyOfSlot(slot) !== family) throw new Error("渠道与账号路由不匹配");
